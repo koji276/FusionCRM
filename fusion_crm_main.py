@@ -448,33 +448,64 @@ def create_user(db_manager, username, password, email, role="user"):
         return False, f"ユーザー作成エラー: {str(e)}"
 
 def ensure_default_user(db_manager):
-    """デフォルトユーザーの確保（修正版）"""
+    """デフォルトユーザーの確保（強制リセット版）"""
     try:
         conn = sqlite3.connect(db_manager.db_name)
         cursor = conn.cursor()
         
-        # ユーザー数確認
-        cursor.execute('SELECT COUNT(*) FROM users')
-        user_count = cursor.fetchone()[0]
+        # adminユーザーを削除（存在する場合）
+        cursor.execute('DELETE FROM users WHERE username = ?', ("admin",))
         
-        # ユーザーが存在しない場合、デフォルトユーザー作成
-        if user_count == 0:
-            default_password = "picocela2024"
-            password_hash = hash_password(default_password)
-            
-            cursor.execute('''
-                INSERT INTO users (username, password_hash, email, role)
-                VALUES (?, ?, ?, ?)
-            ''', ("admin", password_hash, "admin@picocela.com", "admin"))
-            
-            conn.commit()
-            return True, "デフォルトユーザーを作成しました"
+        # デフォルトユーザー作成
+        default_password = "picocela2024"
+        password_hash = hash_password(default_password)
         
+        cursor.execute('''
+            INSERT INTO users (username, password_hash, email, role, is_active)
+            VALUES (?, ?, ?, ?, ?)
+        ''', ("admin", password_hash, "admin@picocela.com", "admin", 1))
+        
+        conn.commit()
         conn.close()
-        return True, "既存ユーザーがあります"
+        return True, "デフォルトユーザーを再作成しました"
         
     except Exception as e:
         return False, f"デフォルトユーザー作成エラー: {str(e)}"
+
+def reset_database_if_needed(db_manager):
+    """データベースリセット機能（トラブルシューティング用）"""
+    try:
+        conn = sqlite3.connect(db_manager.db_name)
+        cursor = conn.cursor()
+        
+        # adminユーザーの認証テスト
+        cursor.execute('SELECT password_hash FROM users WHERE username = ?', ("admin",))
+        result = cursor.fetchone()
+        
+        if result:
+            stored_hash = result[0]
+            test_password = "picocela2024"
+            
+            # パスワードが正しくハッシュ化されているかテスト
+            if not verify_password(test_password, stored_hash):
+                # パスワードハッシュが間違っている場合、ユーザーを再作成
+                cursor.execute('DELETE FROM users WHERE username = ?', ("admin",))
+                
+                correct_hash = hash_password(test_password)
+                cursor.execute('''
+                    INSERT INTO users (username, password_hash, email, role, is_active)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', ("admin", correct_hash, "admin@picocela.com", "admin", 1))
+                
+                conn.commit()
+                conn.close()
+                return True, "データベースを修復しました"
+        
+        conn.close()
+        return True, "データベースは正常です"
+        
+    except Exception as e:
+        return False, f"データベース修復エラー: {str(e)}"
 
 # Streamlitアプリメイン部分
 def main():
@@ -494,11 +525,22 @@ def main():
     # データベース初期化
     db_manager = DatabaseManager()
     
-    # デフォルトユーザー確保（初回実行用）
+    # データベース修復（パスワード認証問題対応）
+    repair_success, repair_message = reset_database_if_needed(db_manager)
+    if not repair_success:
+        st.error(f"データベース修復エラー: {repair_message}")
+    
+    # デフォルトユーザー確保（強制再作成）
     success, message = ensure_default_user(db_manager)
     if not success:
         st.error(f"初期化エラー: {message}")
         return
+    else:
+        # 成功メッセージは一度だけ表示
+        if 'db_initialized' not in st.session_state:
+            st.session_state.db_initialized = True
+            if "再作成" in message:
+                st.success(f"✅ {message}")
     
     company_manager = CompanyManager(db_manager)
     email_manager = EmailCampaignManager(db_manager)
@@ -539,12 +581,65 @@ def main():
         st.rerun()
 
 def show_login_page(db_manager):
-    """ログインページ（認証システム修正版）"""
+    """ログインページ（デバッグ強化版）"""
     st.markdown("## 🔐 FusionCRM ログイン")
     st.markdown("**PicoCELA営業管理システム - Streamlit Cloud版**")
     
     # デフォルトユーザー情報表示
     st.success("💡 **デフォルトログイン**: admin / picocela2024")
+    
+    # デバッグ情報（開発用）
+    with st.expander("🔧 デバッグ情報（開発者用）"):
+        try:
+            conn = sqlite3.connect(db_manager.db_name)
+            cursor = conn.cursor()
+            
+            # ユーザー数確認
+            cursor.execute('SELECT COUNT(*) FROM users')
+            user_count = cursor.fetchone()[0]
+            st.write(f"**登録ユーザー数**: {user_count}")
+            
+            # adminユーザー確認
+            cursor.execute('SELECT username, email, role, is_active FROM users WHERE username = ?', ("admin",))
+            admin_user = cursor.fetchone()
+            
+            if admin_user:
+                st.write(f"**adminユーザー**: 存在")
+                st.write(f"**詳細**: {admin_user}")
+                
+                # パスワードハッシュテスト
+                cursor.execute('SELECT password_hash FROM users WHERE username = ?', ("admin",))
+                stored_hash = cursor.fetchone()[0]
+                test_result = verify_password("picocela2024", stored_hash)
+                st.write(f"**パスワード検証**: {'✅ 成功' if test_result else '❌ 失敗'}")
+                
+                # パスワード修復ボタン
+                if not test_result:
+                    if st.button("🔧 パスワード修復"):
+                        correct_hash = hash_password("picocela2024")
+                        cursor.execute('UPDATE users SET password_hash = ? WHERE username = ?', 
+                                     (correct_hash, "admin"))
+                        conn.commit()
+                        st.success("パスワードを修復しました！ページをリロードしてください。")
+                        st.rerun()
+            else:
+                st.write("**adminユーザー**: 存在しません")
+                
+                # ユーザー作成ボタン
+                if st.button("🔧 adminユーザー作成"):
+                    password_hash = hash_password("picocela2024")
+                    cursor.execute('''
+                        INSERT INTO users (username, password_hash, email, role, is_active)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', ("admin", password_hash, "admin@picocela.com", "admin", 1))
+                    conn.commit()
+                    st.success("adminユーザーを作成しました！ページをリロードしてください。")
+                    st.rerun()
+            
+            conn.close()
+            
+        except Exception as e:
+            st.error(f"デバッグ情報取得エラー: {str(e)}")
     
     tab1, tab2 = st.tabs(["🔑 ログイン", "👤 新規登録"])
     
@@ -567,6 +662,7 @@ def show_login_page(db_manager):
                         st.rerun()
                     else:
                         st.error(f"❌ {message}")
+                        st.info("💡 上記のデバッグ情報を確認して、パスワード修復ボタンを試してください。")
                 else:
                     st.warning("⚠️ ユーザー名とパスワードを入力してください")
         
@@ -583,6 +679,7 @@ def show_login_page(db_manager):
                     st.rerun()
                 else:
                     st.error(f"❌ {message}")
+                    st.info("💡 上記のデバッグ情報を確認してください。")
     
     with tab2:
         st.subheader("👤 新規ユーザー登録")
