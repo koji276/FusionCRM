@@ -1,11 +1,11 @@
-# FusionCRM Requirements - 拡張ステータス・ENR最適化対応版
+# FusionCRM Requirements - Streamlit Cloud対応版
 
 # Core Framework
 streamlit>=1.28.0
 pandas>=1.5.0
 
 # Database & Authentication
-sqlite3
+# sqlite3 は標準ライブラリのため削除
 bcrypt>=4.0.0
 
 # Data Visualization
@@ -14,19 +14,14 @@ plotly>=5.0.0
 # File Processing
 openpyxl>=3.0.0
 
-# Email & SMTP
-smtplib
-email
+# Email & SMTP関連は標準ライブラリのため削除
+# smtplib は標準ライブラリ
+# email は標準ライブラリ
 
 # Utilities
-datetime
-json
-os
-importlib
-time
-re
-
-# Google Sheets Integration (Optional)
-# gspread>=5.0.0
-# google-auth>=2.0.0
-# google-auth-oauthlib>=1.0.0
+# datetime は標準ライブラリ
+# json は標準ライブラリ
+# os は標準ライブラリ
+# importlib は標準ライブラリ
+# time は標準ライブラリ
+# re は標準ライブラリ
