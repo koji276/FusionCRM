@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+FusionCRM - PicoCELA統合CRMシステム
+Main Streamlit Application
+"""
+
+import streamlit as st
+import pandas as pd
+import sqlite3
+import os
+import sys
+from datetime import datetime, timedelta
+import plotly.express as px
+import plotly.graph_objects as go
+
+# モジュールのインポート
+try:
+    from modules.email_distribution import EmailDistribution
+except ImportError:
+    st.error("email_distributionモジュールのインポートに失敗しました")
+    sys.path.append('modules')
+    from email_distribution import EmailDistribution
+
+# ページ設定
+st.set_page_config(
+    page_title="FusionCRM - PicoCELA",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# カスタムCSS
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(90deg, #1f4e79 0%, #2d5aa0 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #1f4e79;
+    }
+    .sidebar .sidebar-content {
+        background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+class FusionCRMApp:
+    def __in
