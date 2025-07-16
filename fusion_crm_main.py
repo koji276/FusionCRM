@@ -11,28 +11,50 @@ import importlib.util
 import time
 import re
 
-# メール関連のimport（Streamlit Cloud対応強化版）
+# メール関連のimport（Streamlit Cloud完全対応版）
 EMAIL_AVAILABLE = True
 EMAIL_ERROR_MESSAGE = ""
 
 try:
+    # 基本的なメール機能のインポートテスト
     import smtplib
-    from email.mime.text import MimeText
-    from email.mime.multipart import MimeMultipart
-    from email.mime.base import MIMEBase
-    from email import encoders
     import ssl
     
-    # メール送信テスト関数
-    def test_email_functionality():
-        """メール機能のテスト"""
+    # email.mimeの代替アプローチ
+    try:
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.base import MIMEBase
+        from email import encoders
+        MIME_IMPORT_METHOD = "standard"
+    except ImportError:
         try:
-            # 基本的なMIMEオブジェクト作成テスト
-            msg = MimeMultipart()
-            msg['Subject'] = "Test"
-            return True, "メール機能は利用可能です"
+            # 代替インポート方法
+            import email.mime.text as mime_text
+            import email.mime.multipart as mime_multipart
+            MIMEText = mime_text.MIMEText
+            MIMEMultipart = mime_multipart.MIMEMultipart
+            MIME_IMPORT_METHOD = "alternative"
+        except ImportError:
+            # 最小限のメール機能
+            MIME_IMPORT_METHOD = "minimal"
+            
+    # 最終的なメール機能テスト
+    def test_email_functionality():
+        """メール機能の包括的テスト"""
+        try:
+            if MIME_IMPORT_METHOD == "minimal":
+                return False, "MIME機能が利用できません"
+            
+            # SMTP接続テスト
+            context = ssl.create_default_context()
+            with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                server.starttls(context=context)
+                # 接続のみテスト（認証は実際の送信時に行う）
+                return True, "メール機能は利用可能です"
+                
         except Exception as e:
-            return False, f"メール機能エラー: {str(e)}"
+            return False, f"SMTP接続テストエラー: {str(e)}"
     
     email_test_result, email_test_message = test_email_functionality()
     if not email_test_result:
@@ -111,24 +133,8 @@ class DatabaseManager:
         except:
             return []
     
-    def safe_add_column(self, table_name, column_name, column_definition):
-        """カラムを安全に追加"""
-        try:
-            existing_columns = self.get_table_columns(table_name)
-            if column_name not in existing_columns:
-                conn = sqlite3.connect(self.db_name)
-                cursor = conn.cursor()
-                cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}')
-                conn.commit()
-                conn.close()
-                return True
-        except Exception as e:
-            st.error(f"カラム追加エラー ({table_name}.{column_name}): {str(e)}")
-            return False
-        return False
-    
     def rebuild_companies_table_if_needed(self):
-        """企業テーブルの再構築（必要に応じて）"""
+        """企業テーブルの安全な再構築（必要に応じて）"""
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
@@ -282,7 +288,8 @@ class DatabaseManager:
                 body TEXT DEFAULT '',
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 status TEXT DEFAULT '',
-                error_message TEXT DEFAULT ''
+                error_message TEXT DEFAULT '',
+                to_email TEXT DEFAULT ''
             )
         ''')
         
@@ -510,7 +517,7 @@ class CompanyManager:
             return pd.DataFrame(), pd.DataFrame()
 
 class EmailCampaignManager:
-    """メールキャンペーン管理（完全機能版）"""
+    """メールキャンペーン管理（Streamlit Cloud完全対応版）"""
     
     def __init__(self, db_manager):
         self.db = db_manager
@@ -521,25 +528,48 @@ class EmailCampaignManager:
             'use_tls': True
         }
     
+    def create_simple_email_message(self, from_email, to_email, subject, body, from_name="PicoCELA Inc."):
+        """シンプルなメールメッセージ作成（Streamlit Cloud対応）"""
+        try:
+            if MIME_IMPORT_METHOD == "standard":
+                msg = MIMEMultipart()
+                msg['From'] = f"{from_name} <{from_email}>"
+                msg['To'] = to_email
+                msg['Subject'] = subject
+                msg.attach(MIMEText(body, 'plain', 'utf-8'))
+                return msg
+            elif MIME_IMPORT_METHOD == "alternative":
+                msg = MIMEMultipart()
+                msg['From'] = f"{from_name} <{from_email}>"
+                msg['To'] = to_email
+                msg['Subject'] = subject
+                msg.attach(MIMEText(body, 'plain', 'utf-8'))
+                return msg
+            else:
+                # 最小限の実装
+                return None
+        except Exception as e:
+            st.error(f"メッセージ作成エラー: {str(e)}")
+            return None
+    
     def send_single_email(self, to_email, subject, body, from_email, from_password, from_name="PicoCELA Inc."):
-        """単一メール送信"""
+        """単一メール送信（Streamlit Cloud完全対応版）"""
         if not self.email_available:
             return False, f"メール機能が利用できません: {EMAIL_ERROR_MESSAGE}"
         
         try:
             # メッセージ作成
-            msg = MimeMultipart()
-            msg['From'] = f"{from_name} <{from_email}>"
-            msg['To'] = to_email
-            msg['Subject'] = subject
+            msg = self.create_simple_email_message(from_email, to_email, subject, body, from_name)
+            if msg is None:
+                return False, "メッセージ作成に失敗しました"
             
-            # 本文追加
-            msg.attach(MimeText(body, 'plain', 'utf-8'))
+            # SSL context作成
+            context = ssl.create_default_context()
             
             # SMTP接続・送信
             with smtplib.SMTP(self.smtp_settings['smtp_server'], self.smtp_settings['smtp_port']) as server:
                 if self.smtp_settings['use_tls']:
-                    server.starttls()
+                    server.starttls(context=context)
                 server.login(from_email, from_password)
                 server.send_message(msg)
             
@@ -555,7 +585,7 @@ class EmailCampaignManager:
             return False, f"メール送信エラー: {str(e)}"
     
     def send_bulk_email(self, targets_df, subject, body_template, from_email, from_password, from_name="PicoCELA Inc."):
-        """一括メール送信"""
+        """一括メール送信（Streamlit Cloud対応版）"""
         if not self.email_available:
             return [], f"メール機能が利用できません: {EMAIL_ERROR_MESSAGE}"
         
@@ -589,7 +619,7 @@ class EmailCampaignManager:
                 })
                 
                 # 送信履歴をデータベースに記録
-                self.log_email_send(target.get('id'), subject, personalized_body, status)
+                self.log_email_send(target.get('id'), subject, personalized_body, status, target['email'])
                 
                 # 送信間隔（Gmail制限対応）
                 time.sleep(2)
@@ -607,7 +637,7 @@ class EmailCampaignManager:
         summary = f"送信完了: 成功 {success_count}件, 失敗 {error_count}件"
         return results, summary
     
-    def log_email_send(self, company_id, subject, body, status):
+    def log_email_send(self, company_id, subject, body, status, to_email):
         """メール送信履歴記録"""
         try:
             conn = sqlite3.connect(self.db.db_name)
@@ -615,9 +645,9 @@ class EmailCampaignManager:
             
             cursor.execute('''
                 INSERT INTO email_history (
-                    company_id, subject, body, status, sent_at
-                ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (company_id, subject, body, status))
+                    company_id, subject, body, status, to_email, sent_at
+                ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (company_id, subject, body, status, to_email))
             
             conn.commit()
             conn.close()
@@ -804,12 +834,12 @@ def main():
     st.title("🚀 FusionCRM - PicoCELA営業管理システム")
     st.markdown("**ENR最適化・拡張ステータス対応版 (Streamlit Cloud)**")
     
-    # 環境情報表示
+    # メール機能状態表示
     if EMAIL_AVAILABLE:
         st.success("📧 メール機能: 利用可能（Gmail SMTP対応）")
     else:
-        st.error(f"⚠️ メール機能エラー: {EMAIL_ERROR_MESSAGE}")
-        st.info("💡 Gmail設定を確認してください：アプリパスワードが必要です")
+        st.warning(f"⚠️ メール機能エラー: {EMAIL_ERROR_MESSAGE}")
+        st.info("💡 メール機能に制限がありますが、CSVダウンロード機能で代替できます")
     
     # セッション状態初期化
     if 'logged_in' not in st.session_state:
@@ -1105,7 +1135,7 @@ def show_company_management(company_manager):
         st.info("条件に一致する企業がありません。")
 
 def show_email_campaigns(email_manager, company_manager):
-    """メールキャンペーン（完全機能版）"""
+    """メールキャンペーン（Streamlit Cloud完全対応版）"""
     st.header("📧 メールキャンペーン")
     
     # メール機能状態表示
@@ -1113,7 +1143,7 @@ def show_email_campaigns(email_manager, company_manager):
         st.success("✅ メール送信機能: 利用可能")
     else:
         st.error(f"❌ メール機能エラー: {EMAIL_ERROR_MESSAGE}")
-        st.stop()
+        st.info("💡 CSVダウンロード機能を活用してGmailで一括送信してください")
     
     tab1, tab2, tab3 = st.tabs(["🎯 戦略的配信", "📧 Gmail設定", "📊 配信履歴"])
     
@@ -1145,141 +1175,158 @@ def show_email_campaigns(email_manager, company_manager):
         if not targets.empty:
             st.dataframe(targets[['company_name', 'email', 'priority_score', 'wifi_required']], use_container_width=True)
             
-            # メールテンプレート選択
-            st.subheader("📝 メールテンプレート")
-            templates = email_manager.get_email_templates()
-            
-            template_names = {
-                "wifi_needed": "🔌 WiFi必要企業向け",
-                "general": "📋 一般企業向け", 
-                "follow_up": "🔄 フォローアップ"
-            }
-            
-            selected_template = st.selectbox(
-                "テンプレート選択",
-                options=list(template_names.keys()),
-                format_func=lambda x: template_names[x]
-            )
-            
-            template = templates[selected_template]
-            
-            # メール内容編集
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                subject = st.text_input("件名", value=template["subject"])
-            
-            with col2:
-                from_name = st.text_input("送信者名", value="PicoCELA Inc.")
-            
-            body = st.text_area(
-                "本文（{company_name}は自動置換されます）", 
-                value=template["body"], 
-                height=300
-            )
-            
-            # Gmail設定
-            st.subheader("📧 Gmail送信設定")
-            
-            # セッション状態でGmail設定を保持
-            if 'gmail_email' not in st.session_state:
-                st.session_state.gmail_email = ""
-            if 'gmail_password' not in st.session_state:
-                st.session_state.gmail_password = ""
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                gmail_email = st.text_input(
-                    "Gmailアドレス", 
-                    value=st.session_state.gmail_email,
-                    placeholder="例: your-email@gmail.com"
+            # メール機能が利用可能な場合のみ表示
+            if EMAIL_AVAILABLE:
+                # メールテンプレート選択
+                st.subheader("📝 メールテンプレート")
+                templates = email_manager.get_email_templates()
+                
+                template_names = {
+                    "wifi_needed": "🔌 WiFi必要企業向け",
+                    "general": "📋 一般企業向け", 
+                    "follow_up": "🔄 フォローアップ"
+                }
+                
+                selected_template = st.selectbox(
+                    "テンプレート選択",
+                    options=list(template_names.keys()),
+                    format_func=lambda x: template_names[x]
                 )
-                st.session_state.gmail_email = gmail_email
-            
-            with col2:
-                gmail_password = st.text_input(
-                    "Gmailアプリパスワード", 
-                    type="password",
-                    value=st.session_state.gmail_password,
-                    placeholder="16文字のアプリパスワード"
+                
+                template = templates[selected_template]
+                
+                # メール内容編集
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    subject = st.text_input("件名", value=template["subject"])
+                
+                with col2:
+                    from_name = st.text_input("送信者名", value="PicoCELA Inc.")
+                
+                body = st.text_area(
+                    "本文（{company_name}は自動置換されます）", 
+                    value=template["body"], 
+                    height=300
                 )
-                st.session_state.gmail_password = gmail_password
-            
-            st.info("💡 Gmailアプリパスワードの取得方法：Googleアカウント設定 → セキュリティ → 2段階認証 → アプリパスワード")
-            
-            # メール送信ボタン
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button("📧 テストメール送信", type="secondary"):
-                    if gmail_email and gmail_password:
-                        # 最初の企業にテストメール送信
-                        if not targets.empty:
-                            test_target = targets.iloc[0]
-                            test_body = body.replace('{company_name}', test_target['company_name'])
-                            
-                            with st.spinner("テストメール送信中..."):
-                                success, message = email_manager.send_single_email(
-                                    test_target['email'], 
-                                    f"[テスト] {subject}", 
-                                    test_body, 
-                                    gmail_email, 
-                                    gmail_password,
-                                    from_name
-                                )
-                            
-                            if success:
-                                st.success(f"✅ テストメール送信成功: {test_target['email']}")
+                
+                # Gmail設定
+                st.subheader("📧 Gmail送信設定")
+                
+                # セッション状態でGmail設定を保持
+                if 'gmail_email' not in st.session_state:
+                    st.session_state.gmail_email = ""
+                if 'gmail_password' not in st.session_state:
+                    st.session_state.gmail_password = ""
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    gmail_email = st.text_input(
+                        "Gmailアドレス", 
+                        value=st.session_state.gmail_email,
+                        placeholder="例: your-email@gmail.com"
+                    )
+                    st.session_state.gmail_email = gmail_email
+                
+                with col2:
+                    gmail_password = st.text_input(
+                        "Gmailアプリパスワード", 
+                        type="password",
+                        value=st.session_state.gmail_password,
+                        placeholder="16文字のアプリパスワード"
+                    )
+                    st.session_state.gmail_password = gmail_password
+                
+                st.info("💡 Gmailアプリパスワードの取得方法：Googleアカウント設定 → セキュリティ → 2段階認証 → アプリパスワード")
+                
+                # メール送信ボタン
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button("📧 テストメール送信", type="secondary"):
+                        if gmail_email and gmail_password:
+                            # 最初の企業にテストメール送信
+                            if not targets.empty:
+                                test_target = targets.iloc[0]
+                                test_body = body.replace('{company_name}', test_target['company_name'])
+                                
+                                with st.spinner("テストメール送信中..."):
+                                    success, message = email_manager.send_single_email(
+                                        test_target['email'], 
+                                        f"[テスト] {subject}", 
+                                        test_body, 
+                                        gmail_email, 
+                                        gmail_password,
+                                        from_name
+                                    )
+                                
+                                if success:
+                                    st.success(f"✅ テストメール送信成功: {test_target['email']}")
+                                else:
+                                    st.error(f"❌ テストメール送信失敗: {message}")
+                        else:
+                            st.warning("⚠️ Gmail設定を入力してください")
+                
+                with col2:
+                    # CSVダウンロード
+                    csv = targets[['company_name', 'email', 'priority_score', 'wifi_required']].to_csv(index=False)
+                    st.download_button(
+                        label="📁 リストダウンロード",
+                        data=csv,
+                        file_name=f"campaign_targets_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv"
+                    )
+                
+                with col3:
+                    if st.button("🚀 一括メール送信", type="primary"):
+                        if gmail_email and gmail_password:
+                            if len(targets) > 0:
+                                # 送信確認
+                                if st.session_state.get('confirm_bulk_send', False):
+                                    with st.spinner(f"{len(targets)}社への一括メール送信中..."):
+                                        results, summary = email_manager.send_bulk_email(
+                                            targets, subject, body, gmail_email, gmail_password, from_name
+                                        )
+                                    
+                                    st.success(f"📧 {summary}")
+                                    
+                                    # 送信結果表示
+                                    results_df = pd.DataFrame(results)
+                                    st.dataframe(results_df, use_container_width=True)
+                                    
+                                    # 送信確認状態をリセット
+                                    st.session_state.confirm_bulk_send = False
+                                else:
+                                    st.warning(f"⚠️ {len(targets)}社に一括送信します。本当によろしいですか？")
+                                    if st.button("🔥 送信実行", type="primary"):
+                                        st.session_state.confirm_bulk_send = True
+                                        st.rerun()
                             else:
-                                st.error(f"❌ テストメール送信失敗: {message}")
-                    else:
-                        st.warning("⚠️ Gmail設定を入力してください")
-            
-            with col2:
-                # CSVダウンロード
+                                st.warning("⚠️ 送信対象企業がありません")
+                        else:
+                            st.warning("⚠️ Gmail設定を入力してください")
+            else:
+                # メール機能が利用できない場合
+                st.warning("メール送信機能が利用できないため、CSVダウンロードをご利用ください")
                 csv = targets[['company_name', 'email', 'priority_score', 'wifi_required']].to_csv(index=False)
                 st.download_button(
-                    label="📁 リストダウンロード",
+                    label="📁 ターゲットリストをダウンロード",
                     data=csv,
                     file_name=f"campaign_targets_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
                 )
-            
-            with col3:
-                if st.button("🚀 一括メール送信", type="primary"):
-                    if gmail_email and gmail_password:
-                        if len(targets) > 0:
-                            # 送信確認
-                            if st.session_state.get('confirm_bulk_send', False):
-                                with st.spinner(f"{len(targets)}社への一括メール送信中..."):
-                                    results, summary = email_manager.send_bulk_email(
-                                        targets, subject, body, gmail_email, gmail_password, from_name
-                                    )
-                                
-                                st.success(f"📧 {summary}")
-                                
-                                # 送信結果表示
-                                results_df = pd.DataFrame(results)
-                                st.dataframe(results_df, use_container_width=True)
-                                
-                                # 送信確認状態をリセット
-                                st.session_state.confirm_bulk_send = False
-                            else:
-                                st.warning(f"⚠️ {len(targets)}社に一括送信します。本当によろしいですか？")
-                                if st.button("🔥 送信実行", type="primary"):
-                                    st.session_state.confirm_bulk_send = True
-                                    st.rerun()
-                        else:
-                            st.warning("⚠️ 送信対象企業がありません")
-                    else:
-                        st.warning("⚠️ Gmail設定を入力してください")
             
         else:
             st.info("📋 条件に一致する企業がありません")
     
     with tab2:
         st.subheader("📧 Gmail設定ガイド")
+        
+        if EMAIL_AVAILABLE:
+            st.success("✅ Gmail SMTP機能は利用可能です")
+        else:
+            st.error(f"❌ Gmail SMTP機能エラー: {EMAIL_ERROR_MESSAGE}")
         
         st.markdown("""
         ### 🔧 Gmail SMTP設定手順
@@ -1302,28 +1349,29 @@ def show_email_campaigns(email_manager, company_manager):
         """)
         
         # Gmail設定テスト
-        st.subheader("🧪 Gmail接続テスト")
-        
-        test_email = st.text_input("テスト用Gmailアドレス")
-        test_password = st.text_input("テスト用アプリパスワード", type="password")
-        
-        if st.button("🔍 接続テスト"):
-            if test_email and test_password:
-                with st.spinner("Gmail接続テスト中..."):
-                    success, message = email_manager.send_single_email(
-                        test_email,  # 自分宛てに送信
-                        "FusionCRM 接続テスト",
-                        "FusionCRMからのテストメールです。この メールが届いた場合、Gmail設定は正常です。",
-                        test_email,
-                        test_password
-                    )
-                
-                if success:
-                    st.success("✅ Gmail接続成功！設定は正常です。")
+        if EMAIL_AVAILABLE:
+            st.subheader("🧪 Gmail接続テスト")
+            
+            test_email = st.text_input("テスト用Gmailアドレス")
+            test_password = st.text_input("テスト用アプリパスワード", type="password")
+            
+            if st.button("🔍 接続テスト"):
+                if test_email and test_password:
+                    with st.spinner("Gmail接続テスト中..."):
+                        success, message = email_manager.send_single_email(
+                            test_email,  # 自分宛てに送信
+                            "FusionCRM 接続テスト",
+                            "FusionCRMからのテストメールです。この メールが届いた場合、Gmail設定は正常です。",
+                            test_email,
+                            test_password
+                        )
+                    
+                    if success:
+                        st.success("✅ Gmail接続成功！設定は正常です。")
+                    else:
+                        st.error(f"❌ Gmail接続失敗: {message}")
                 else:
-                    st.error(f"❌ Gmail接続失敗: {message}")
-            else:
-                st.warning("⚠️ テスト用の情報を入力してください")
+                    st.warning("⚠️ テスト用の情報を入力してください")
     
     with tab3:
         st.subheader("📊 配信履歴・効果分析")
@@ -1338,6 +1386,7 @@ def show_email_campaigns(email_manager, company_manager):
                     c.company_name,
                     eh.subject,
                     eh.status,
+                    eh.to_email,
                     c.status as current_status
                 FROM email_history eh
                 LEFT JOIN companies c ON eh.company_id = c.id
@@ -1422,9 +1471,27 @@ def show_settings():
     tab1, tab2 = st.tabs(["📧 メール設定", "🎯 ステータス管理"])
     
     with tab1:
-        st.subheader("📧 メール設定")
-        st.warning("Streamlit Cloud環境ではメール機能は制限されています。")
-        st.info("💡 代替案：CSVダウンロード機能を活用してください。")
+        st.subheader("📧 Gmail SMTP設定")
+        
+        if EMAIL_AVAILABLE:
+            st.success("✅ メール機能は利用可能です")
+            st.info("💡 メールキャンペーンページでGmail設定を行ってください")
+            
+            st.markdown("""
+            ### 📋 Gmail設定要件
+            
+            - **Gmailアカウント**: 送信用アカウント
+            - **2段階認証**: 有効化必須
+            - **アプリパスワード**: 16文字の専用パスワード
+            - **送信制限**: 1日500通まで（Gmail制限）
+            
+            ### 🔧 設定場所
+            **メールキャンペーン** → **Gmail設定**タブで設定できます
+            """)
+        else:
+            st.error(f"❌ メール機能エラー: {EMAIL_ERROR_MESSAGE}")
+            st.warning("メール機能の修復が必要です。")
+            st.info("💡 代替案：CSVダウンロード機能を活用してGmailで一括送信してください")
     
     with tab2:
         st.subheader("🎯 ステータス管理")
