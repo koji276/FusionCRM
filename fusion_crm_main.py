@@ -8,11 +8,18 @@ from datetime import datetime, timedelta
 import json
 import os
 import importlib.util
-import smtplib
-from email.mime.text import MimeText
-from email.mime.multipart import MimeMultipart
 import time
 import re
+
+# メール関連のimportをtry-except文で安全に処理
+try:
+    import smtplib
+    from email.mime.text import MimeText
+    from email.mime.multipart import MimeMultipart
+    EMAIL_AVAILABLE = True
+except ImportError:
+    EMAIL_AVAILABLE = False
+    st.warning("⚠️ メール機能は現在利用できません（Streamlit Cloud環境）")
 
 # ページ設定
 st.set_page_config(
@@ -52,7 +59,7 @@ PICOCELA_KEYWORDS = [
 ]
 
 class DatabaseManager:
-    """データベース管理クラス（拡張ステータス対応）"""
+    """データベース管理クラス（Streamlit Cloud対応）"""
     
     def __init__(self, db_name="fusion_crm.db"):
         self.db_name = db_name
@@ -340,10 +347,11 @@ class CompanyManager:
         return status_df, wifi_df
 
 class EmailCampaignManager:
-    """メールキャンペーン管理（ステータス連動）"""
+    """メールキャンペーン管理（Streamlit Cloud対応）"""
     
     def __init__(self, db_manager):
         self.db = db_manager
+        self.email_available = EMAIL_AVAILABLE
     
     def get_campaign_targets(self, target_status, wifi_required=None, min_relevance=0):
         """キャンペーンターゲット取得"""
@@ -365,11 +373,34 @@ class EmailCampaignManager:
         df = pd.read_sql_query(query, conn, params=params)
         conn.close()
         return df
+    
+    def send_campaign_email(self, targets, subject, body):
+        """メールキャンペーン送信（モック実装）"""
+        if not self.email_available:
+            st.warning("📧 メール機能は現在Streamlit Cloud環境では利用できません")
+            st.info("💡 代替案：メールアドレスリストをCSVでダウンロードして、Gmailで一括送信してください")
+            
+            # CSVダウンロード提供
+            csv = targets[['company_name', 'email']].to_csv(index=False)
+            st.download_button(
+                label="📁 メールアドレスリストをダウンロード",
+                data=csv,
+                file_name=f"email_targets_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
+            return False
+        
+        # メール送信実装（将来の実装）
+        return True
 
 # Streamlitアプリメイン部分
 def main():
     st.title("🚀 FusionCRM - PicoCELA営業管理システム")
-    st.markdown("**ENR最適化・拡張ステータス対応版**")
+    st.markdown("**ENR最適化・拡張ステータス対応版 (Streamlit Cloud)**")
+    
+    # 環境情報表示
+    if not EMAIL_AVAILABLE:
+        st.info("ℹ️ Streamlit Cloud環境で動作中 - メール機能は制限されています")
     
     # セッション状態初期化
     if 'logged_in' not in st.session_state:
@@ -389,6 +420,7 @@ def main():
     
     # サイドバーナビゲーション
     st.sidebar.title(f"👋 {st.session_state.username}")
+    st.sidebar.markdown("🌐 **Streamlit Cloud版**")
     
     page = st.sidebar.selectbox(
         "📋 メニュー",
@@ -417,7 +449,7 @@ def main():
         st.rerun()
 
 def show_login_page(db_manager):
-    """ログインページ"""
+    """ログインページ（簡素化版）"""
     st.markdown("## 🔐 ログイン")
     
     tab1, tab2 = st.tabs(["ログイン", "新規登録"])
@@ -453,6 +485,11 @@ def show_dashboard(company_manager):
     # 基本統計
     all_companies = company_manager.get_companies_by_status()
     total_companies = len(all_companies)
+    
+    if total_companies == 0:
+        st.info("📋 企業データがありません。「データインポート」から企業情報を追加してください。")
+        return
+    
     wifi_companies = len(all_companies[all_companies['wifi_required'] == 1])
     high_priority = len(all_companies[all_companies['priority_score'] >= 100])
     
@@ -588,8 +625,12 @@ def show_company_management(company_manager):
         st.info("条件に一致する企業がありません。")
 
 def show_email_campaigns(email_manager, company_manager):
-    """メールキャンペーン（ステータス連動）"""
+    """メールキャンペーン（Streamlit Cloud対応）"""
     st.header("📧 メールキャンペーン")
+    
+    if not email_manager.email_available:
+        st.warning("📧 Streamlit Cloud環境ではメール送信機能が制限されています")
+        st.info("💡 代替案：メールアドレスリストをダウンロードして、Gmailで一括送信してください")
     
     tab1, tab2 = st.tabs(["🎯 戦略的配信", "📊 配信履歴"])
     
@@ -636,41 +677,14 @@ def show_email_campaigns(email_manager, company_manager):
                 use_container_width=True
             )
             
-            # メールテンプレート
-            st.subheader("📝 メールテンプレート")
-            
-            template_type = st.selectbox(
-                "テンプレート選択",
-                ["WiFi必要企業向け", "一般企業向け", "フォローアップ", "カスタム"]
+            # CSVダウンロード
+            csv = targets[['company_name', 'email', 'priority_score', 'wifi_required']].to_csv(index=False)
+            st.download_button(
+                label="📁 ターゲットリストをダウンロード",
+                data=csv,
+                file_name=f"campaign_targets_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
             )
-            
-            if template_type == "WiFi必要企業向け":
-                subject = "建設現場のワイヤレス通信課題解決のご提案"
-                body = """
-{company_name} 様
-
-お世話になっております。
-株式会社PicoCELAの営業担当です。
-
-建設現場でのワイヤレス通信にお困りではありませんか？
-
-弊社のメッシュネットワーク技術により、以下のメリットを提供いたします：
-
-• 既存インフラに依存しない独立ネットワーク
-• IoTセンサー・モニタリング機器との連携  
-• 現場安全性向上・デジタル化推進
-• 通信エリアの柔軟な拡張
-
-詳細な資料をお送りいたしますので、お時間をいただけますでしょうか。
-
-株式会社PicoCELA
-"""
-            else:
-                subject = st.text_input("件名")
-                body = st.text_area("本文", height=200)
-            
-            if st.button("📧 キャンペーン実行"):
-                st.success(f"{len(targets)}社への配信を開始しました！")
     
     with tab2:
         st.subheader("📊 配信履歴・効果分析")
@@ -722,11 +736,15 @@ def show_settings():
     """設定"""
     st.header("⚙️ 設定")
     
-    tab1, tab2 = st.tabs(["📧 Gmail設定", "🎯 ステータス管理"])
+    tab1, tab2 = st.tabs(["📧 メール設定", "🎯 ステータス管理"])
     
     with tab1:
-        st.subheader("📧 Gmail設定")
-        st.info("Gmail SMTP設定は config_manager.py で行ってください。")
+        st.subheader("📧 メール設定")
+        if EMAIL_AVAILABLE:
+            st.info("メール機能は利用可能ですが、設定はローカル版で行ってください。")
+        else:
+            st.warning("Streamlit Cloud環境ではメール機能は制限されています。")
+            st.info("💡 代替案：CSVダウンロード機能を活用してください。")
     
     with tab2:
         st.subheader("🎯 ステータス管理")
@@ -741,11 +759,12 @@ def show_data_import(company_manager):
     st.header("📁 データインポート")
     
     st.subheader("📊 ENRデータインポート")
+    st.info("💡 ENR_Companies_Complete_Local.xlsx または任意のCSV/Excelファイルをアップロードできます")
     
     uploaded_file = st.file_uploader(
-        "ENRファイルをアップロード",
+        "ファイルをアップロード",
         type=['xlsx', 'csv'],
-        help="ENR_Companies_Complete_Local.xlsx を選択してください"
+        help="企業データファイルを選択してください"
     )
     
     if uploaded_file is not None:
@@ -758,6 +777,18 @@ def show_data_import(company_manager):
             st.write(f"📊 読み込みデータ: {len(df)}行")
             st.dataframe(df.head(), use_container_width=True)
             
+            # カラムマッピング
+            st.subheader("📋 カラムマッピング")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                name_col = st.selectbox("企業名", df.columns, index=0)
+                email_col = st.selectbox("メールアドレス", ['None'] + list(df.columns), index=1 if len(df.columns) > 1 else 0)
+                
+            with col2:
+                url_col = st.selectbox("ウェブサイト", ['None'] + list(df.columns), index=2 if len(df.columns) > 2 else 0)
+                industry_col = st.selectbox("業界", ['None'] + list(df.columns), index=3 if len(df.columns) > 3 else 0)
+            
             if st.button("🚀 インポート実行"):
                 progress_bar = st.progress(0)
                 success_count = 0
@@ -765,13 +796,12 @@ def show_data_import(company_manager):
                 for idx, row in df.iterrows():
                     try:
                         company_data = {
-                            'company_name': row.get('Company Name', row.get('会社名', '')),
-                            'website_url': row.get('Website', row.get('URL', '')),
-                            'email': row.get('Email', row.get('メール', '')),
-                            'phone': row.get('Phone', row.get('電話', '')),
-                            'industry': row.get('Industry', row.get('業界', 'Construction')),
-                            'source': 'ENR Import',
-                            'notes': f"ENR企業 - {row.get('Notes', '')}"
+                            'company_name': str(row[name_col]) if pd.notna(row[name_col]) else f"Company_{idx}",
+                            'email': str(row[email_col]) if email_col != 'None' and pd.notna(row[email_col]) else '',
+                            'website_url': str(row[url_col]) if url_col != 'None' and pd.notna(row[url_col]) else '',
+                            'industry': str(row[industry_col]) if industry_col != 'None' and pd.notna(row[industry_col]) else 'Construction',
+                            'source': f'{uploaded_file.name} Import',
+                            'notes': f"インポート日: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
                         }
                         
                         company_manager.add_company(company_data, st.session_state.username)
@@ -783,6 +813,7 @@ def show_data_import(company_manager):
                     progress_bar.progress((idx + 1) / len(df))
                 
                 st.success(f"✅ {success_count}社のインポートが完了しました！")
+                st.balloons()
                 
         except Exception as e:
             st.error(f"ファイル読み込みエラー: {str(e)}")
