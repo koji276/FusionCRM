@@ -1,6 +1,32 @@
+# FusionCRM Requirements - 拡張ステータス・ENR最適化対応版
+
+# Core Framework
 streamlit>=1.28.0
 pandas>=1.5.0
-numpy>=1.24.0
+
+# Database & Authentication
+sqlite3
+bcrypt>=4.0.0
+
+# Data Visualization
 plotly>=5.0.0
+
+# File Processing
 openpyxl>=3.0.0
-python-dateutil>=2.8.0
+
+# Email & SMTP
+smtplib
+email
+
+# Utilities
+datetime
+json
+os
+importlib
+time
+re
+
+# Google Sheets Integration (Optional)
+# gspread>=5.0.0
+# google-auth>=2.0.0
+# google-auth-oauthlib>=1.0.0
