@@ -70,12 +70,12 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         
-        # ユーザーテーブル
+        # ユーザーテーブル（Streamlit Cloud対応）
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
+                password_hash BLOB NOT NULL,
                 email TEXT,
                 role TEXT DEFAULT 'user',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -410,6 +410,10 @@ def main():
     
     # データベース初期化
     db_manager = DatabaseManager()
+    
+    # デフォルトユーザー確保（初回実行用）
+    ensure_default_user(db_manager)
+    
     company_manager = CompanyManager(db_manager)
     email_manager = EmailCampaignManager(db_manager)
     
@@ -449,34 +453,65 @@ def main():
         st.rerun()
 
 def show_login_page(db_manager):
-    """ログインページ（簡素化版）"""
-    st.markdown("## 🔐 ログイン")
+    """ログインページ（Streamlit Cloud対応）"""
+    st.markdown("## 🔐 FusionCRM ログイン")
+    st.markdown("**PicoCELA営業管理システム - Streamlit Cloud版**")
+    
+    # デフォルトユーザー情報表示
+    st.info("💡 **初回ログイン**: admin / picocela2024")
     
     tab1, tab2 = st.tabs(["ログイン", "新規登録"])
     
     with tab1:
-        username = st.text_input("ユーザー名")
-        password = st.text_input("パスワード", type="password")
+        st.subheader("🔑 ログイン")
         
-        if st.button("ログイン"):
-            if authenticate_user(db_manager, username, password):
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.success("ログインしました！")
-                st.rerun()
-            else:
-                st.error("ユーザー名またはパスワードが正しくありません")
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            username = st.text_input("ユーザー名", placeholder="admin")
+            password = st.text_input("パスワード", type="password", placeholder="picocela2024")
+            
+            if st.button("🚀 ログイン", type="primary"):
+                if username and password:
+                    if authenticate_user(db_manager, username, password):
+                        st.session_state.logged_in = True
+                        st.session_state.username = username
+                        st.success("✅ ログインしました！")
+                        st.rerun()
+                    else:
+                        st.error("❌ ユーザー名またはパスワードが正しくありません")
+                else:
+                    st.warning("⚠️ ユーザー名とパスワードを入力してください")
+        
+        with col2:
+            st.markdown("**💡 クイックログイン**")
+            if st.button("🔑 admin でログイン"):
+                if authenticate_user(db_manager, "admin", "picocela2024"):
+                    st.session_state.logged_in = True
+                    st.session_state.username = "admin"
+                    st.success("✅ ログインしました！")
+                    st.rerun()
+                else:
+                    st.error("❌ デフォルトユーザーでのログインに失敗しました")
     
     with tab2:
-        new_username = st.text_input("新しいユーザー名")
-        new_password = st.text_input("新しいパスワード", type="password")
-        new_email = st.text_input("メールアドレス")
+        st.subheader("👤 新規ユーザー登録")
         
-        if st.button("登録"):
-            if create_user(db_manager, new_username, new_password, new_email):
-                st.success("ユーザーが作成されました！ログインしてください。")
+        new_username = st.text_input("新しいユーザー名", placeholder="例: yamada")
+        new_password = st.text_input("新しいパスワード", type="password", placeholder="6文字以上")
+        new_email = st.text_input("メールアドレス", placeholder="例: yamada@picocela.com")
+        
+        if st.button("📝 ユーザー登録"):
+            if new_username and new_password and new_email:
+                if len(new_password) >= 6:
+                    if create_user(db_manager, new_username, new_password, new_email):
+                        st.success("✅ ユーザーが作成されました！ログインしてください。")
+                    else:
+                        st.error("❌ ユーザー作成に失敗しました（ユーザー名が既に存在する可能性があります）")
+                else:
+                    st.warning("⚠️ パスワードは6文字以上で入力してください")
             else:
-                st.error("ユーザー作成に失敗しました")
+                st.warning("⚠️ すべての項目を入力してください")
 
 def show_dashboard(company_manager):
     """ダッシュボード（ENR分析強化）"""
@@ -819,27 +854,41 @@ def show_data_import(company_manager):
             st.error(f"ファイル読み込みエラー: {str(e)}")
 
 def authenticate_user(db_manager, username, password):
-    """ユーザー認証"""
-    conn = sqlite3.connect(db_manager.db_name)
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT password_hash FROM users WHERE username = ?', (username,))
-    result = cursor.fetchone()
-    
-    conn.close()
-    
-    if result and bcrypt.checkpw(password.encode('utf-8'), result[0]):
-        return True
-    return False
-
-def create_user(db_manager, username, password, email):
-    """ユーザー作成"""
+    """ユーザー認証（Streamlit Cloud対応）"""
     try:
         conn = sqlite3.connect(db_manager.db_name)
         cursor = conn.cursor()
         
+        cursor.execute('SELECT password_hash FROM users WHERE username = ?', (username,))
+        result = cursor.fetchone()
+        
+        conn.close()
+        
+        if result:
+            stored_hash = result[0]
+            
+            # bytes型に変換（Streamlit Cloud対応）
+            if isinstance(stored_hash, str):
+                stored_hash = stored_hash.encode('utf-8')
+            
+            return bcrypt.checkpw(password.encode('utf-8'), stored_hash)
+        
+        return False
+        
+    except Exception as e:
+        st.error(f"認証エラー: {str(e)}")
+        return False
+
+def create_user(db_manager, username, password, email):
+    """ユーザー作成（Streamlit Cloud対応）"""
+    try:
+        conn = sqlite3.connect(db_manager.db_name)
+        cursor = conn.cursor()
+        
+        # パスワードハッシュ化
         password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
         
+        # SQLiteではblobまたはtextとして保存
         cursor.execute('''
             INSERT INTO users (username, password_hash, email)
             VALUES (?, ?, ?)
@@ -848,8 +897,41 @@ def create_user(db_manager, username, password, email):
         conn.commit()
         conn.close()
         return True
-    except:
+        
+    except sqlite3.IntegrityError:
+        st.error("ユーザー名が既に存在します")
         return False
+    except Exception as e:
+        st.error(f"ユーザー作成エラー: {str(e)}")
+        return False
+
+def ensure_default_user(db_manager):
+    """デフォルトユーザーの確保（初回実行用）"""
+    try:
+        conn = sqlite3.connect(db_manager.db_name)
+        cursor = conn.cursor()
+        
+        # ユーザー数確認
+        cursor.execute('SELECT COUNT(*) FROM users')
+        user_count = cursor.fetchone()[0]
+        
+        # ユーザーが存在しない場合、デフォルトユーザー作成
+        if user_count == 0:
+            default_password = "picocela2024"
+            password_hash = bcrypt.hashpw(default_password.encode('utf-8'), bcrypt.gensalt())
+            
+            cursor.execute('''
+                INSERT INTO users (username, password_hash, email, role)
+                VALUES (?, ?, ?, ?)
+            ''', ("admin", password_hash, "admin@picocela.com", "admin"))
+            
+            conn.commit()
+            st.info("🔐 デフォルトユーザーを作成しました: admin / picocela2024")
+        
+        conn.close()
+        
+    except Exception as e:
+        st.error(f"デフォルトユーザー作成エラー: {str(e)}")
 
 if __name__ == "__main__":
     main()
