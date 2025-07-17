@@ -1,22 +1,7 @@
-# FusionCRM Requirements - Google Sheets 対応
 streamlit>=1.28.0
-pandas>=2.3
-numpy>=2.3
-requests>=2.28
-plotly>=5.14
-
-# Google Sheets / OAuth
-gspread          # Sheets クライアント
-google-auth-oauthlib
-google-api-python-client
-
-# Excel 入出力
-openpyxl>=3.1
-xlsxwriter>=3.1
-
-# Email
-secure-smtplib>=0.1.1
-
-# 日時
-python-dateutil>=2.8
-
+pandas>=1.5.0
+sqlite3
+email-validator
+python-dotenv
+requests>=2.25.0
+openpyxl>=3.0.0
