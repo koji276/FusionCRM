@@ -1,24 +1,22 @@
-# FusionCRM Requirements - Google Sheets専用版
-
-# Core dependencies
+# FusionCRM Requirements - Google Sheets 対応
 streamlit>=1.28.0
-pandas>=1.5.0
-requests>=2.28.0
+pandas>=2.3
+numpy>=2.3
+requests>=2.28
+plotly>=5.14
 
-# Visualization
-plotly>=5.14.0
+# Google Sheets / OAuth
+gspread          # Sheets クライアント
+google-auth-oauthlib
+google-api-python-client
 
-# Email functionality
-# Note: These are included in Python standard library on most systems
-# but listing for completeness
+# Excel 入出力
+openpyxl>=3.1
+xlsxwriter>=3.1
+
+# Email
 secure-smtplib>=0.1.1
 
-# Date and time handling
-python-dateutil>=2.8.2
+# 日時
+python-dateutil>=2.8
 
-# Data processing
-numpy>=1.24.0
-openpyxl>=3.1.0  # For Excel file support
-
-# Optional but recommended
-xlsxwriter>=3.1.0  # For Excel export functionality
