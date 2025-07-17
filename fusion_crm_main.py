@@ -523,6 +523,11 @@ def main():
 # 既存の画面関数はそのまま使用（show_dashboard、show_company_managementなど）
 # ただし、SQLite関連の処理は削除
 
+def show_analytics(company_manager):
+    """📈 分析・レポート － まだ未実装のためのプレースホルダ"""
+    st.header("📈 分析・レポート (準備中)")
+    st.info("この機能は現在準備中です。")
+
 def show_dashboard(company_manager):
     """ダッシュボード（Google Sheets版）"""
     st.header("📊 ダッシュボード")
