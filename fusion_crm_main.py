@@ -1,32 +1,12 @@
-"""
-FusionCRM - PicoCELA営業管理システム（Google Sheets専用版）
-SQLiteを削除し、Google Sheetsのみに対応
-"""
-
 import streamlit as st
 import pandas as pd
-import hashlib
+import requests
+import json
+from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
-import json
+from plotly.subplots import make_subplots
 import time
-import requests
-
-# メール関連のインポート（既存のまま）
-EMAIL_AVAILABLE = True
-EMAIL_ERROR_MESSAGE = ""
-
-try:
-    import smtplib
-    import ssl
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.base import MIMEBase
-    from email import encoders
-except ImportError as e:
-    EMAIL_AVAILABLE = False
-    EMAIL_ERROR_MESSAGE = f"メールライブラリのインポートエラー: {str(e)}"
 
 # ページ設定
 st.set_page_config(
@@ -36,590 +16,471 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 拡張ステータス定義（既存のまま）
-SALES_STATUS = {
-    'New': '新規企業',
-    'Contacted': '初回連絡済み', 
-    'Replied': '返信あり',
-    'Engaged': '継続対話中',
-    'Qualified': '有望企業確定',
-    'Proposal': '提案書提出済み',
-    'Negotiation': '契約交渉中',
-    'Won': '受注成功',
-    'Lost': '失注',
-    'Dormant': '休眠中'
-}
+# CSS styling
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        margin: 0.5rem 0;
+    }
+    .success-box {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 5px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    .error-box {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 5px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# ステータス優先度
-STATUS_PRIORITY = {
-    'Won': 10, 'Negotiation': 9, 'Proposal': 8, 'Qualified': 7,
-    'Engaged': 6, 'Replied': 5, 'Contacted': 4, 'New': 3,
-    'Dormant': 2, 'Lost': 1
-}
-
-# PicoCELA関連キーワード
-PICOCELA_KEYWORDS = [
-    'network', 'mesh', 'wireless', 'wifi', 'connectivity',
-    'iot', 'smart', 'digital', 'automation', 'sensor', 'ai',
-    'construction', 'building', 'site', 'industrial', 'management',
-    'platform', 'solution', 'integration', 'control', 'monitoring'
-]
-
-class GoogleSheetsAPI:
-    """Google Sheets API（Google Apps Script経由）"""
+class GoogleSheetsManager:
+    """Google Apps Script経由でGoogle Sheetsを管理するクラス"""
     
-    def __init__(self, gas_url):
-        self.gas_url = gas_url
-        self._test_connection()
-    
-    def _test_connection(self):
+    def __init__(self, script_url=None):
+        self.script_url = script_url
+        self.is_connected = False
+        
+    def test_connection(self):
         """接続テスト"""
+        if not self.script_url:
+            return False, "Google Apps Script URLが設定されていません"
+            
         try:
-            response = requests.get(f"{self.gas_url}?action=test")
-            result = response.json()
-            if not result.get('success'):
-                raise Exception("Google Apps Script接続エラー")
-        except Exception as e:
-            st.error(f"接続エラー: {str(e)}")
-            raise
-    
-    def call_api(self, action, method='GET', data=None):
-        """API呼び出しの共通メソッド"""
-        try:
-            if method == 'GET':
-                response = requests.get(f"{self.gas_url}?action={action}")
+            # テスト用のPINGリクエスト
+            response = requests.post(
+                self.script_url,
+                json={"action": "ping"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("status") == "success":
+                    self.is_connected = True
+                    return True, "接続成功！"
+                else:
+                    return False, f"エラー: {result.get('message', '不明なエラー')}"
             else:
-                response = requests.post(
-                    self.gas_url,
-                    json={"action": action, **data} if data else {"action": action},
-                    headers={'Content-Type': 'application/json'}
-                )
-            
-            result = response.json()
-            if not result.get('success'):
-                raise Exception(result.get('error', 'Unknown error'))
-            
-            return result
-        except Exception as e:
-            st.error(f"API呼び出しエラー（{action}）: {str(e)}")
-            return None
-
-class ENRDataProcessor:
-    """ENRデータ処理クラス（既存のまま）"""
-    
-    @staticmethod
-    def calculate_picocela_relevance(company_data):
-        """PicoCELA関連度スコア計算"""
-        score = 0
-        text_fields = [
-            str(company_data.get('company_name', '')),
-            str(company_data.get('website_url', '')),
-            str(company_data.get('notes', '')),
-            str(company_data.get('industry', ''))
-        ]
-        
-        full_text = ' '.join(text_fields).lower()
-        
-        for keyword in PICOCELA_KEYWORDS:
-            if keyword.lower() in full_text:
-                score += 10
-        
-        return min(score, 100)
-    
-    @staticmethod
-    def detect_wifi_requirement(company_data):
-        """WiFi需要判定"""
-        wifi_indicators = [
-            'wifi', 'wireless', 'network', 'connectivity', 
-            'iot', 'smart building', 'construction tech'
-        ]
-        
-        text_fields = [
-            str(company_data.get('company_name', '')),
-            str(company_data.get('notes', '')),
-            str(company_data.get('industry', ''))
-        ]
-        
-        full_text = ' '.join(text_fields).lower()
-        
-        for indicator in wifi_indicators:
-            if indicator in full_text:
-                return True
-        return False
-    
-    @staticmethod
-    def calculate_priority_score(company_data):
-        """優先度スコア計算"""
-        relevance = ENRDataProcessor.calculate_picocela_relevance(company_data)
-        wifi_required = ENRDataProcessor.detect_wifi_requirement(company_data)
-        
-        priority = relevance
-        if wifi_required:
-            priority += 50
-        
-        return min(priority, 150)
-
-class CompanyManager:
-    """企業管理クラス（Google Sheets専用版）"""
-    
-    def __init__(self, api):
-        self.api = api
-        self._ensure_database()
-    
-    def _ensure_database(self):
-        """データベース初期化確認"""
-        result = self.api.call_api('init_database', method='POST')
-        if result and result.get('spreadsheet_url'):
-            st.session_state.spreadsheet_url = result['spreadsheet_url']
-    
-    def add_company(self, company_data, user_id="system"):
-        """企業追加"""
-        try:
-            # PicoCELA関連度とWiFi需要を自動計算
-            relevance_score = ENRDataProcessor.calculate_picocela_relevance(company_data)
-            wifi_required = 1 if ENRDataProcessor.detect_wifi_requirement(company_data) else 0
-            priority_score = ENRDataProcessor.calculate_priority_score(company_data)
-            
-            company_data['picocela_relevance_score'] = relevance_score
-            company_data['wifi_required'] = wifi_required
-            company_data['priority_score'] = priority_score
-            
-            result = self.api.call_api('add_company', method='POST', data={'company': company_data})
-            
-            if result:
-                return result.get('company_id')
-            return None
-            
-        except Exception as e:
-            st.error(f"企業追加エラー: {str(e)}")
-            return None
-    
-    def update_status(self, company_id, new_status, user_id, reason="", notes=""):
-        """ステータス更新"""
-        try:
-            result = self.api.call_api('update_status', method='POST', data={
-                'company_id': company_id,
-                'new_status': new_status,
-                'note': f"{reason} - {notes}" if reason else notes
-            })
-            
-            return result is not None
-            
-        except Exception as e:
-            st.error(f"ステータス更新エラー: {str(e)}")
-            return False
-    
-    def get_companies_by_status(self, status=None, wifi_required=None):
-        """ステータス別企業取得"""
-        try:
-            result = self.api.call_api('get_companies')
-            
-            if result and result.get('companies'):
-                df = pd.DataFrame(result['companies'])
+                return False, f"HTTP エラー: {response.status_code}"
                 
-                # フィルタリング
-                if status and not df.empty:
-                    df = df[df['sales_status'] == status]
-                
-                if wifi_required is not None and not df.empty:
-                    df = df[df['wifi_required'] == wifi_required]
-                
-                return df
+        except requests.exceptions.Timeout:
+            return False, "接続タイムアウト（10秒）"
+        except requests.exceptions.RequestException as e:
+            return False, f"接続エラー: {str(e)}"
+        except Exception as e:
+            return False, f"予期しないエラー: {str(e)}"
+    
+    def get_companies(self):
+        """企業データを取得"""
+        if not self.is_connected:
+            return []
             
-            return pd.DataFrame()
+        try:
+            response = requests.post(
+                self.script_url,
+                json={"action": "getCompanies"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("status") == "success":
+                    return result.get("data", [])
+            return []
             
         except Exception as e:
             st.error(f"企業データ取得エラー: {str(e)}")
-            return pd.DataFrame()
+            return []
     
-    def get_status_analytics(self):
-        """ステータス分析データ取得"""
+    def add_company(self, company_data):
+        """企業を追加"""
+        if not self.is_connected:
+            return False, "接続されていません"
+            
         try:
-            result = self.api.call_api('get_analytics')
+            response = requests.post(
+                self.script_url,
+                json={
+                    "action": "addCompany",
+                    "data": company_data
+                },
+                timeout=10
+            )
             
-            if result and result.get('analytics'):
-                analytics = result['analytics']
-                
-                # ステータス別データフレーム作成
-                status_data = []
-                for status, count in analytics.get('status_breakdown', {}).items():
-                    status_data.append({
-                        'status': status,
-                        'count': count,
-                        'avg_relevance': 0,  # TODO: APIで平均値も返すように修正
-                        'wifi_count': 0
-                    })
-                status_df = pd.DataFrame(status_data)
-                
-                # WiFi需要データフレーム作成
-                wifi_data = []
-                for wifi_need, count in analytics.get('wifi_needs_breakdown', {}).items():
-                    wifi_data.append({
-                        'wifi_required': 1 if wifi_need == 'High' else 0,
-                        'count': count,
-                        'avg_relevance': 0
-                    })
-                wifi_df = pd.DataFrame(wifi_data)
-                
-                return status_df, wifi_df
-            
-            return pd.DataFrame(), pd.DataFrame()
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("status") == "success", result.get("message", "")
+            return False, f"HTTP エラー: {response.status_code}"
             
         except Exception as e:
-            st.error(f"分析データ取得エラー: {str(e)}")
-            return pd.DataFrame(), pd.DataFrame()
+            return False, f"追加エラー: {str(e)}"
+    
+    def update_company_status(self, company_id, new_status, note=""):
+        """企業ステータスを更新"""
+        if not self.is_connected:
+            return False, "接続されていません"
+            
+        try:
+            response = requests.post(
+                self.script_url,
+                json={
+                    "action": "updateStatus",
+                    "companyId": company_id,
+                    "status": new_status,
+                    "note": note
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("status") == "success", result.get("message", "")
+            return False, f"HTTP エラー: {response.status_code}"
+            
+        except Exception as e:
+            return False, f"更新エラー: {str(e)}"
 
-class EmailCampaignManager:
-    """メールキャンペーン管理（Google Sheets版）"""
+def init_session_state():
+    """セッション状態を初期化"""
+    if 'sheets_manager' not in st.session_state:
+        st.session_state.sheets_manager = None
+    if 'companies_data' not in st.session_state:
+        st.session_state.companies_data = []
+    if 'last_refresh' not in st.session_state:
+        st.session_state.last_refresh = None
+
+def show_connection_setup():
+    """Google Apps Script接続設定画面"""
+    st.markdown('<h1 class="main-header">🚀 FusionCRM - PicoCELA営業管理システム</h1>', unsafe_allow_html=True)
+    st.markdown("### ☁️ Google Sheets版（クラウド対応）")
     
-    def __init__(self, api):
-        self.api = api
-        self.email_available = EMAIL_AVAILABLE
-        self.smtp_settings = {
-            'smtp_server': 'smtp.gmail.com',
-            'smtp_port': 587,
-            'use_tls': True
-        }
+    st.markdown("""
+    <div class="success-box">
+        ✅ <strong>Google Sheets接続中</strong> 📊 スプレッドシートを開く
+    </div>
+    """, unsafe_allow_html=True)
     
-    def send_single_email(self, to_email, subject, body, from_email, from_password, from_name="PicoCELA Inc."):
-        """単一メール送信（既存のまま）"""
-        if not self.email_available:
-            return False, f"メール機能が利用できません: {EMAIL_ERROR_MESSAGE}"
+    st.markdown("---")
+    
+    with st.expander("🔧 Google Apps Script接続設定", expanded=True):
+        st.markdown("""
+        **📋 セットアップ手順:**
+        1. [Google Apps Script](https://script.google.com/) にアクセス
+        2. 新しいプロジェクトを作成
+        3. 提供されたコードを貼り付け
+        4. デプロイして Web アプリURLを取得
+        5. 下記にURLを入力して接続テスト
+        """)
         
-        try:
-            msg = MIMEMultipart()
-            msg['From'] = f"{from_name} <{from_email}>"
-            msg['To'] = to_email
-            msg['Subject'] = subject
-            msg.attach(MIMEText(body, 'plain', 'utf-8'))
-            
-            context = ssl.create_default_context()
-            
-            with smtplib.SMTP(self.smtp_settings['smtp_server'], self.smtp_settings['smtp_port']) as server:
-                if self.smtp_settings['use_tls']:
-                    server.starttls(context=context)
-                server.login(from_email, from_password)
-                server.send_message(msg)
-            
-            return True, "メール送信成功"
-            
-        except Exception as e:
-            return False, f"メール送信エラー: {str(e)}"
-    
-    def send_bulk_email(self, targets_df, subject, body_template, from_email, from_password, from_name="PicoCELA Inc."):
-        """一括メール送信"""
-        results = []
-        success_count = 0
-        error_count = 0
+        script_url = st.text_input(
+            "📍 Google Apps Script Web アプリ URL:",
+            placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec",
+            help="Google Apps ScriptでデプロイしたウェブアプリのURLを入力してください"
+        )
         
-        for idx, target in targets_df.iterrows():
-            try:
-                personalized_body = body_template.replace('{company_name}', str(target.get('company_name', '御社')))
-                
-                success, message = self.send_single_email(
-                    target['email'], subject, personalized_body, 
-                    from_email, from_password, from_name
-                )
-                
-                if success:
-                    success_count += 1
-                    status = "送信成功"
+        col1, col2 = st.columns([1, 3])
+        
+        with col1:
+            if st.button("🔗 接続テスト", type="primary"):
+                if script_url:
+                    with st.spinner("接続テスト中..."):
+                        manager = GoogleSheetsManager(script_url)
+                        success, message = manager.test_connection()
+                        
+                        if success:
+                            st.session_state.sheets_manager = manager
+                            st.success(f"✅ {message}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
                 else:
-                    error_count += 1
-                    status = f"送信失敗: {message}"
-                
-                results.append({
-                    'company_name': target['company_name'],
-                    'email': target['email'],
-                    'status': status,
-                    'sent_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                })
-                
-                time.sleep(2)  # Gmail制限対応
-                
-            except Exception as e:
-                error_count += 1
-                results.append({
-                    'company_name': target.get('company_name', 'Unknown'),
-                    'email': target.get('email', 'Unknown'),
-                    'status': f"処理エラー: {str(e)}",
-                    'sent_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                })
+                    st.warning("URLを入力してください")
         
-        summary = f"送信完了: 成功 {success_count}件, 失敗 {error_count}件"
-        return results, summary
+        with col2:
+            if script_url:
+                st.info("💡 URLが入力されました。接続テストを実行してください。")
+
+def show_dashboard():
+    """メインダッシュボード"""
+    if not st.session_state.sheets_manager or not st.session_state.sheets_manager.is_connected:
+        show_connection_setup()
+        return
     
-    def get_campaign_targets(self, target_status, wifi_required=None, min_relevance=0):
-        """キャンペーンターゲット取得"""
-        result = self.api.call_api('get_companies')
-        
-        if result and result.get('companies'):
-            df = pd.DataFrame(result['companies'])
-            
-            # フィルタリング
-            if not df.empty:
-                df = df[df['sales_status'] == target_status]
-                df = df[df['email'].notna() & (df['email'] != '')]
-                df = df[df['picocela_relevance_score'] >= min_relevance]
-                
-                if wifi_required is not None:
-                    df = df[df['wifi_required'] == wifi_required]
-            
-            return df
-        
-        return pd.DataFrame()
+    st.markdown('<h1 class="main-header">🚀 FusionCRM Dashboard</h1>', unsafe_allow_html=True)
     
-    def get_email_templates(self):
-        """メールテンプレート（既存のまま）"""
-        return {
-            "wifi_needed": {
-                "subject": "建設現場のワイヤレス通信課題解決のご提案 - PicoCELA",
-                "body": """{company_name} 様
-
-お世話になっております。
-株式会社PicoCELAの営業担当です。
-
-建設現場でのワイヤレス通信にお困りではありませんか？
-
-弊社のメッシュネットワーク技術により、以下のメリットを提供いたします：
-
-• 既存インフラに依存しない独立ネットワーク構築
-• IoTセンサー・モニタリング機器との安定した連携
-• 現場安全性向上・リアルタイム状況把握
-• 通信エリアの柔軟な拡張・移設対応
-
-建設業界での豊富な導入実績がございます。
-詳細な資料をお送りいたしますので、15分程度お時間をいただけますでしょうか。
-
-何かご質問がございましたら、お気軽にお声かけください。
-
-株式会社PicoCELA
-営業部"""
-            },
-            "general": {
-                "subject": "PicoCELA メッシュネットワークソリューションのご案内",
-                "body": """{company_name} 様
-
-お世話になっております。
-株式会社PicoCELAの営業担当です。
-
-弊社は建設・産業分野向けのワイヤレス通信ソリューションを提供しております。
-
-貴社の事業にお役立ていただけるソリューションがあるかもしれません。
-ぜひ一度お話をお聞かせください。
-
-株式会社PicoCELA
-営業部"""
-            }
-        }
-
-def get_google_sheets_api():
-    """Google Sheets API取得"""
-    # Streamlit secretsから取得を試みる
-    if 'google_apps_script_url' in st.secrets:
-        gas_url = st.secrets['google_apps_script_url']
-    # セッション状態から取得
-    elif 'gas_url' in st.session_state:
-        gas_url = st.session_state.gas_url
-    else:
-        gas_url = None
-    
-    if gas_url:
-        try:
-            return GoogleSheetsAPI(gas_url)
-        except:
-            return None
-    
-    return None
-
-def setup_google_sheets_connection():
-    """Google Sheets接続設定UI"""
-    st.markdown("## 🚀 Google Sheets接続設定")
-    st.info("Google Apps Script URLを設定してください")
-    
-    gas_url = st.text_input(
-        "Google Apps Script URL",
-        placeholder="https://script.google.com/macros/s/xxx/exec",
-        help="Google Apps Scriptをデプロイして取得したURLを入力"
-    )
-    
-    col1, col2 = st.columns(2)
-    
+    # データ更新ボタン
+    col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
-        if st.button("🔗 接続テスト", type="primary", use_container_width=True):
-            if gas_url:
-                try:
-                    api = GoogleSheetsAPI(gas_url)
-                    st.success("✅ 接続成功！")
-                    st.session_state.gas_url = gas_url
-                    time.sleep(1)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ 接続失敗: {str(e)}")
-            else:
-                st.warning("URLを入力してください")
+        if st.button("🔄 データ更新", type="secondary"):
+            with st.spinner("データを取得中..."):
+                st.session_state.companies_data = st.session_state.sheets_manager.get_companies()
+                st.session_state.last_refresh = datetime.now()
+                st.success("データを更新しました！")
     
     with col2:
-        if st.button("📖 セットアップガイド", use_container_width=True):
-            st.markdown("""
-            ### 📋 Google Apps Script設定手順
-            1. [Google Apps Script](https://script.google.com/)にアクセス
-            2. 新しいプロジェクトを作成
-            3. 提供されたコードをコピー&ペースト
-            4. デプロイ → 新しいデプロイ
-            5. ウェブアプリとして公開（全員にアクセス許可）
-            6. URLをコピーして上記に貼り付け
-            """)
-
-# メイン関数
-def main():
-    st.title("🚀 FusionCRM - PicoCELA営業管理システム")
-    st.markdown("**☁️ Google Sheets版（クラウド対応）**")
+        if st.session_state.last_refresh:
+            st.info(f"最終更新: {st.session_state.last_refresh.strftime('%H:%M:%S')}")
     
-    # Google Sheets API取得
-    api = get_google_sheets_api()
+    # 企業データがない場合は自動取得
+    if not st.session_state.companies_data:
+        with st.spinner("企業データを読み込み中..."):
+            st.session_state.companies_data = st.session_state.sheets_manager.get_companies()
     
-    if api is None:
-        setup_google_sheets_connection()
+    companies = st.session_state.companies_data
+    
+    if not companies:
+        st.warning("📋 企業データがありません。新しい企業を追加してください。")
         return
     
-    # マネージャー初期化
-    company_manager = CompanyManager(api)
-    email_manager = EmailCampaignManager(api)
-    
-    # Google Sheetsリンク表示
-    if 'spreadsheet_url' in st.session_state:
-        st.success(f"✅ Google Sheets接続中 | [📊 スプレッドシートを開く]({st.session_state.spreadsheet_url})")
-    
-    # サイドバー
-    st.sidebar.title("🌟 FusionCRM")
-    st.sidebar.markdown("☁️ **Google Sheets版**")
-    
-    # 接続情報表示
-    if 'gas_url' in st.session_state:
-        st.sidebar.success("✅ 接続済み")
-        if st.sidebar.button("🔌 切断"):
-            del st.session_state.gas_url
-            st.rerun()
-    
-    page = st.sidebar.selectbox(
-        "📋 メニュー",
-        ["📊 ダッシュボード", "🏢 企業管理", "📧 メールキャンペーン", 
-         "📈 分析・レポート", "📁 データインポート"]
-    )
-    
-    # ページルーティング
-    if page == "📊 ダッシュボード":
-        show_dashboard(company_manager)
-    elif page == "🏢 企業管理":
-        show_company_management(company_manager)
-    elif page == "📧 メールキャンペーン":
-        show_email_campaigns(email_manager, company_manager)
-    elif page == "📈 分析・レポート":
-        show_analytics(company_manager)
-    elif page == "📁 データインポート":
-        show_data_import(company_manager)
-
-# 既存の画面関数はそのまま使用（show_dashboard、show_company_managementなど）
-# ただし、SQLite関連の処理は削除
-
-def show_analytics(company_manager):
-    """📈 分析・レポート － まだ未実装のためのプレースホルダ"""
-    st.header("📈 分析・レポート (準備中)")
-    st.info("この機能は現在準備中です。")
-
-def show_dashboard(company_manager):
-    """ダッシュボード（Google Sheets版）"""
-    st.header("📊 ダッシュボード")
-    
-    # 基本統計
-    all_companies = company_manager.get_companies_by_status()
-    total_companies = len(all_companies)
-    
-    if total_companies == 0:
-        st.info("📋 企業データがありません。サンプルデータを追加してテストしてください。")
-        
-        if st.button("🚀 サンプルデータを追加", type="primary"):
-            sample_companies = [
-                {
-                    'company_name': 'テストコンストラクション株式会社',
-                    'email': 'contact@test-construction.com',
-                    'industry': 'Construction',
-                    'notes': 'WiFi, IoT, wireless network solutions needed for construction sites',
-                    'source': 'Sample Data'
-                },
-                {
-                    'company_name': 'スマートビルディング合同会社',
-                    'email': 'info@smart-building.co.jp',
-                    'industry': 'Smart Building',
-                    'notes': 'mesh network, construction tech, digital solutions',
-                    'source': 'Sample Data'
-                }
-            ]
-            
-            success_count = 0
-            for company in sample_companies:
-                result = company_manager.add_company(company, 'system')
-                if result:
-                    success_count += 1
-            
-            if success_count > 0:
-                st.success(f"✅ {success_count}社のサンプルデータを追加しました！")
-                st.rerun()
-        
-        return
-    
-    # 統計計算
-    try:
-        wifi_companies = len(all_companies[all_companies['wifi_required'] == 1])
-        high_priority = len(all_companies[all_companies['priority_score'] >= 100])
-        engaged_plus = len(all_companies[all_companies['sales_status'].isin(['Engaged', 'Qualified', 'Proposal', 'Negotiation'])])
-    except:
-        wifi_companies = 0
-        high_priority = 0
-        engaged_plus = 0
+    # KPIメトリクス
+    df = pd.DataFrame(companies)
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("📈 総企業数", total_companies)
+        st.metric("🏢 総企業数", len(df))
     
     with col2:
-        wifi_pct = f"{wifi_companies/total_companies*100:.1f}%" if total_companies > 0 else "0%"
-        st.metric("📶 WiFi必要企業", wifi_companies, wifi_pct)
+        if 'status' in df.columns:
+            qualified_count = len(df[df['status'] == 'Qualified'])
+            st.metric("⭐ 有望企業", qualified_count)
     
     with col3:
-        high_pct = f"{high_priority/total_companies*100:.1f}%" if total_companies > 0 else "0%"
-        st.metric("🎯 高優先度企業", high_priority, high_pct)
+        if 'picoCela_score' in df.columns:
+            high_score = len(df[df['picoCela_score'] >= 7])
+            st.metric("🎯 高関連度企業", high_score)
     
     with col4:
-        st.metric("🔥 商談中企業", engaged_plus)
+        if 'status' in df.columns:
+            new_count = len(df[df['status'] == 'New'])
+            st.metric("🆕 新規企業", new_count)
     
-    # 分析グラフ
-    try:
-        status_analytics, wifi_analytics = company_manager.get_status_analytics()
+    # ステータス分布チャート
+    if 'status' in df.columns:
+        st.markdown("### 📊 ステータス分布")
+        status_counts = df['status'].value_counts()
         
+        fig = px.pie(
+            values=status_counts.values,
+            names=status_counts.index,
+            title="企業ステータス分布"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # 企業リスト
+    st.markdown("### 🏢 企業一覧")
+    
+    # フィルター
+    col1, col2 = st.columns(2)
+    with col1:
+        if 'status' in df.columns:
+            status_filter = st.selectbox(
+                "ステータスでフィルター:",
+                ["全て"] + list(df['status'].unique())
+            )
+        else:
+            status_filter = "全て"
+    
+    with col2:
+        if 'picoCela_score' in df.columns:
+            score_filter = st.slider(
+                "PicoCELA関連度スコア以上:",
+                min_value=0,
+                max_value=10,
+                value=0
+            )
+        else:
+            score_filter = 0
+    
+    # フィルター適用
+    filtered_df = df.copy()
+    if status_filter != "全て" and 'status' in df.columns:
+        filtered_df = filtered_df[filtered_df['status'] == status_filter]
+    if 'picoCela_score' in df.columns:
+        filtered_df = filtered_df[filtered_df['picoCela_score'] >= score_filter]
+    
+    st.dataframe(filtered_df, use_container_width=True)
+
+def show_add_company():
+    """企業追加画面"""
+    if not st.session_state.sheets_manager or not st.session_state.sheets_manager.is_connected:
+        st.error("❌ Google Sheetsに接続されていません")
+        return
+    
+    st.markdown("### ➕ 新規企業追加")
+    
+    with st.form("add_company_form"):
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("📊 ステータス別分布")
-            if not status_analytics.empty:
-                fig = px.pie(status_analytics, values='count', names='status',
-                            title="企業ステータス分布")
-                st.plotly_chart(fig, use_container_width=True)
+            company_name = st.text_input("🏢 企業名*", placeholder="例: 株式会社○○建設")
+            industry = st.selectbox(
+                "🏗️ 業界",
+                ["建設業", "製造業", "IT・通信", "不動産", "その他"]
+            )
+            website = st.text_input("🌐 ウェブサイト", placeholder="https://example.com")
         
         with col2:
-            st.subheader("📶 WiFi需要分析")
-            if not wifi_analytics.empty:
-                wifi_labels = ['WiFi不要', 'WiFi必要']
-                fig = px.bar(x=wifi_labels, y=wifi_analytics['count'],
-                            title="WiFi需要別企業数")
-                st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.warning(f"グラフ表示エラー: {str(e)}")
+            contact_person = st.text_input("👤 担当者名", placeholder="山田太郎")
+            email = st.text_input("📧 メールアドレス", placeholder="yamada@example.com")
+            phone = st.text_input("📞 電話番号", placeholder="03-1234-5678")
+        
+        picoCela_score = st.slider(
+            "🎯 PicoCELA関連度スコア",
+            min_value=1,
+            max_value=10,
+            value=5,
+            help="1: 関連性低い ← → 10: 関連性高い"
+        )
+        
+        notes = st.text_area("📝 備考", placeholder="追加情報やメモ")
+        
+        submitted = st.form_submit_button("✅ 企業を追加", type="primary")
+        
+        if submitted:
+            if not company_name:
+                st.error("❌ 企業名は必須です")
+            else:
+                company_data = {
+                    "name": company_name,
+                    "industry": industry,
+                    "website": website,
+                    "contact_person": contact_person,
+                    "email": email,
+                    "phone": phone,
+                    "picoCela_score": picoCela_score,
+                    "notes": notes,
+                    "status": "New",
+                    "created_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                
+                with st.spinner("企業を追加中..."):
+                    success, message = st.session_state.sheets_manager.add_company(company_data)
+                    
+                    if success:
+                        st.success(f"✅ {company_name} を追加しました！")
+                        # データを更新
+                        st.session_state.companies_data = st.session_state.sheets_manager.get_companies()
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ 追加失敗: {message}")
 
-# その他の関数（show_company_management、show_email_campaignsなど）も
-# 同様にSQLite関連の処理を削除してGoogle Sheets APIを使用するように修正
+def show_status_management():
+    """ステータス管理画面"""
+    if not st.session_state.sheets_manager or not st.session_state.sheets_manager.is_connected:
+        st.error("❌ Google Sheetsに接続されていません")
+        return
+    
+    st.markdown("### 📈 ステータス管理")
+    
+    companies = st.session_state.companies_data
+    if not companies:
+        st.warning("📋 企業データがありません")
+        return
+    
+    df = pd.DataFrame(companies)
+    
+    # 企業選択
+    company_names = df['name'].tolist() if 'name' in df.columns else []
+    selected_company = st.selectbox("🏢 企業を選択:", company_names)
+    
+    if selected_company:
+        company_row = df[df['name'] == selected_company].iloc[0]
+        
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.markdown("**現在の情報:**")
+            st.info(f"📊 現在のステータス: {company_row.get('status', 'N/A')}")
+            st.info(f"🎯 PicoCELA関連度: {company_row.get('picoCela_score', 'N/A')}")
+            
+        with col2:
+            st.markdown("**ステータス更新:**")
+            new_status = st.selectbox(
+                "新しいステータス:",
+                ["New", "Contacted", "Replied", "Engaged", "Qualified", "Proposal", "Negotiation", "Won", "Lost", "Dormant"]
+            )
+            
+            note = st.text_area("📝 更新理由・メモ:", placeholder="ステータス変更の理由を記入")
+            
+            if st.button("🔄 ステータス更新", type="primary"):
+                with st.spinner("ステータスを更新中..."):
+                    company_id = company_row.get('id', selected_company)
+                    success, message = st.session_state.sheets_manager.update_company_status(
+                        company_id, new_status, note
+                    )
+                    
+                    if success:
+                        st.success(f"✅ {selected_company} のステータスを {new_status} に更新しました！")
+                        # データを更新
+                        st.session_state.companies_data = st.session_state.sheets_manager.get_companies()
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ 更新失敗: {message}")
+
+def main():
+    """メイン関数"""
+    # セッション状態初期化
+    init_session_state()
+    
+    # サイドバーメニュー
+    with st.sidebar:
+        st.markdown("### 🚀 FusionCRM メニュー")
+        
+        menu_options = [
+            "📊 ダッシュボード",
+            "➕ 企業追加",
+            "📈 ステータス管理",
+            "⚙️ 設定"
+        ]
+        
+        selected_menu = st.radio("メニュー選択:", menu_options)
+        
+        st.markdown("---")
+        
+        # 接続状態表示
+        if st.session_state.sheets_manager and st.session_state.sheets_manager.is_connected:
+            st.success("✅ Google Sheets 接続中")
+        else:
+            st.error("❌ 未接続")
+        
+        # データ統計
+        if st.session_state.companies_data:
+            st.markdown("### 📊 データ統計")
+            st.metric("企業数", len(st.session_state.companies_data))
+    
+    # メイン画面表示
+    try:
+        if selected_menu == "📊 ダッシュボード":
+            show_dashboard()
+        elif selected_menu == "➕ 企業追加":
+            show_add_company()
+        elif selected_menu == "📈 ステータス管理":
+            show_status_management()
+        elif selected_menu == "⚙️ 設定":
+            show_connection_setup()
+    except Exception as e:
+        st.error(f"❌ エラーが発生しました: {str(e)}")
+        st.info("💡 設定画面で接続を確認してください")
 
 if __name__ == "__main__":
     main()
