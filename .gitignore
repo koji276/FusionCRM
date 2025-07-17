@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.csv
+*.xlsx
+*.xls
+
+# Backup files
+*_backup.*
+*.bak
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+
+# Google Apps Script URL (sensitive)
+gas_url.txt
+script_url.txt
+
+# Old SQLite files (no longer needed)
+fusion_crm.db
+fusion_crm.db-journal
+migrations/
+
+# Test files
+test_*.py
+*_test.py
+
+# Documentation build
+docs/_build/
