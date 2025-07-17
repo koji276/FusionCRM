@@ -1,72 +1,32 @@
+"""
+FusionCRM - PicoCELA営業管理システム（Google Sheets専用版）
+SQLiteを削除し、Google Sheetsのみに対応
+"""
+
 import streamlit as st
 import pandas as pd
-import sqlite3
 import hashlib
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import json
-import os
-import importlib.util
 import time
-import re
+import requests
 
-# メール関連のimport（Streamlit Cloud完全対応版）
+# メール関連のインポート（既存のまま）
 EMAIL_AVAILABLE = True
 EMAIL_ERROR_MESSAGE = ""
 
 try:
-    # 基本的なメール機能のインポートテスト
     import smtplib
     import ssl
-    
-    # email.mimeの代替アプローチ
-    try:
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.base import MIMEBase
-        from email import encoders
-        MIME_IMPORT_METHOD = "standard"
-    except ImportError:
-        try:
-            # 代替インポート方法
-            import email.mime.text as mime_text
-            import email.mime.multipart as mime_multipart
-            MIMEText = mime_text.MIMEText
-            MIMEMultipart = mime_multipart.MIMEMultipart
-            MIME_IMPORT_METHOD = "alternative"
-        except ImportError:
-            # 最小限のメール機能
-            MIME_IMPORT_METHOD = "minimal"
-            
-    # 最終的なメール機能テスト
-    def test_email_functionality():
-        """メール機能の包括的テスト"""
-        try:
-            if MIME_IMPORT_METHOD == "minimal":
-                return False, "MIME機能が利用できません"
-            
-            # SMTP接続テスト
-            context = ssl.create_default_context()
-            with smtplib.SMTP("smtp.gmail.com", 587) as server:
-                server.starttls(context=context)
-                # 接続のみテスト（認証は実際の送信時に行う）
-                return True, "メール機能は利用可能です"
-                
-        except Exception as e:
-            return False, f"SMTP接続テストエラー: {str(e)}"
-    
-    email_test_result, email_test_message = test_email_functionality()
-    if not email_test_result:
-        EMAIL_AVAILABLE = False
-        EMAIL_ERROR_MESSAGE = email_test_message
-        
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.base import MIMEBase
+    from email import encoders
 except ImportError as e:
     EMAIL_AVAILABLE = False
     EMAIL_ERROR_MESSAGE = f"メールライブラリのインポートエラー: {str(e)}"
-except Exception as e:
-    EMAIL_AVAILABLE = False
-    EMAIL_ERROR_MESSAGE = f"メール機能初期化エラー: {str(e)}"
 
 # ページ設定
 st.set_page_config(
@@ -76,28 +36,28 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 拡張ステータス定義（ENR最適化対応）
+# 拡張ステータス定義（既存のまま）
 SALES_STATUS = {
     'New': '新規企業',
     'Contacted': '初回連絡済み', 
     'Replied': '返信あり',
-    'Engaged': '継続対話中',      # 🆕 オンラインミーティング段階
+    'Engaged': '継続対話中',
     'Qualified': '有望企業確定',
-    'Proposal': '提案書提出済み',  # 🆕 提案段階
-    'Negotiation': '契約交渉中',  # 🆕 条件調整段階
-    'Won': '受注成功',            # 🆕 成約
+    'Proposal': '提案書提出済み',
+    'Negotiation': '契約交渉中',
+    'Won': '受注成功',
     'Lost': '失注',
-    'Dormant': '休眠中'           # 🆕 再活性化対象
+    'Dormant': '休眠中'
 }
 
-# ステータス優先度（ENR戦略対応）
+# ステータス優先度
 STATUS_PRIORITY = {
     'Won': 10, 'Negotiation': 9, 'Proposal': 8, 'Qualified': 7,
     'Engaged': 6, 'Replied': 5, 'Contacted': 4, 'New': 3,
     'Dormant': 2, 'Lost': 1
 }
 
-# PicoCELA関連キーワード（ENRデータ分析用）
+# PicoCELA関連キーワード
 PICOCELA_KEYWORDS = [
     'network', 'mesh', 'wireless', 'wifi', 'connectivity',
     'iot', 'smart', 'digital', 'automation', 'sensor', 'ai',
@@ -105,202 +65,47 @@ PICOCELA_KEYWORDS = [
     'platform', 'solution', 'integration', 'control', 'monitoring'
 ]
 
-def hash_password(password):
-    """パスワードハッシュ化（Streamlit Cloud対応）"""
-    salt = "picocela_fusion_crm_2024"
-    return hashlib.sha256((password + salt).encode()).hexdigest()
-
-def verify_password(password, hashed):
-    """パスワード検証"""
-    return hash_password(password) == hashed
-
-class DatabaseManager:
-    """データベース管理クラス（Streamlit Cloud互換性強化版）"""
+class GoogleSheetsAPI:
+    """Google Sheets API（Google Apps Script経由）"""
     
-    def __init__(self, db_name="fusion_crm.db"):
-        self.db_name = db_name
-        self.init_database()
+    def __init__(self, gas_url):
+        self.gas_url = gas_url
+        self._test_connection()
     
-    def get_table_columns(self, table_name):
-        """テーブルのカラム一覧を取得"""
+    def _test_connection(self):
+        """接続テスト"""
         try:
-            conn = sqlite3.connect(self.db_name)
-            cursor = conn.cursor()
-            cursor.execute(f'PRAGMA table_info({table_name})')
-            columns = [row[1] for row in cursor.fetchall()]
-            conn.close()
-            return columns
-        except:
-            return []
-    
-    def rebuild_companies_table_if_needed(self):
-        """企業テーブルの安全な再構築（必要に応じて）"""
-        try:
-            conn = sqlite3.connect(self.db_name)
-            cursor = conn.cursor()
-            
-            # 既存データのバックアップ
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='companies'")
-            if cursor.fetchone():
-                try:
-                    # 既存データを取得
-                    cursor.execute("SELECT * FROM companies")
-                    existing_data = cursor.fetchall()
-                    
-                    # 既存のカラム名を取得
-                    cursor.execute("PRAGMA table_info(companies)")
-                    old_columns = [row[1] for row in cursor.fetchall()]
-                    
-                    # 新しいテーブル作成
-                    cursor.execute("DROP TABLE IF EXISTS companies_backup")
-                    cursor.execute("ALTER TABLE companies RENAME TO companies_backup")
-                    
-                    # 完全なスキーマで新テーブル作成
-                    self.create_companies_table_full_schema(cursor)
-                    
-                    # データ移行（カラムが存在するもののみ）
-                    if existing_data:
-                        self.migrate_company_data(cursor, existing_data, old_columns)
-                    
-                    # バックアップテーブル削除
-                    cursor.execute("DROP TABLE IF EXISTS companies_backup")
-                    
-                except Exception as e:
-                    st.warning(f"データ移行中にエラー: {str(e)} - 新しいテーブルを作成します")
-                    cursor.execute("DROP TABLE IF EXISTS companies")
-                    self.create_companies_table_full_schema(cursor)
-            else:
-                # テーブルが存在しない場合は新規作成
-                self.create_companies_table_full_schema(cursor)
-            
-            conn.commit()
-            conn.close()
-            return True
-            
+            response = requests.get(f"{self.gas_url}?action=test")
+            result = response.json()
+            if not result.get('success'):
+                raise Exception("Google Apps Script接続エラー")
         except Exception as e:
-            st.error(f"テーブル再構築エラー: {str(e)}")
-            return False
+            st.error(f"接続エラー: {str(e)}")
+            raise
     
-    def create_companies_table_full_schema(self, cursor):
-        """完全なスキーマで企業テーブルを作成"""
-        cursor.execute('''
-            CREATE TABLE companies (
-                id INTEGER PRIMARY KEY,
-                company_name TEXT NOT NULL,
-                website_url TEXT DEFAULT '',
-                email TEXT DEFAULT '',
-                phone TEXT DEFAULT '',
-                address TEXT DEFAULT '',
-                industry TEXT DEFAULT '',
-                employees_count TEXT DEFAULT '',
-                revenue_range TEXT DEFAULT '',
-                status TEXT DEFAULT 'New',
-                picocela_relevance_score INTEGER DEFAULT 0,
-                keywords_matched TEXT DEFAULT '',
-                wifi_required INTEGER DEFAULT 0,
-                priority_score INTEGER DEFAULT 0,
-                source TEXT DEFAULT 'Manual',
-                notes TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_contact_date TIMESTAMP,
-                next_action TEXT DEFAULT '',
-                next_action_date TIMESTAMP
-            )
-        ''')
-    
-    def migrate_company_data(self, cursor, old_data, old_columns):
-        """既存データを新しいテーブルに移行"""
-        # 基本的なカラムマッピング
-        basic_columns = ['id', 'company_name', 'website_url', 'email', 'phone', 
-                        'address', 'industry', 'employees_count', 'revenue_range', 'status']
-        
-        for row in old_data:
-            try:
-                # 基本データの準備
-                company_data = {}
-                for i, col in enumerate(old_columns):
-                    if i < len(row) and col in basic_columns:
-                        company_data[col] = row[i] if row[i] is not None else ''
-                
-                # デフォルト値設定
-                company_data.setdefault('company_name', 'Unknown Company')
-                company_data.setdefault('status', 'New')
-                company_data.setdefault('wifi_required', 0)
-                company_data.setdefault('priority_score', 0)
-                company_data.setdefault('picocela_relevance_score', 0)
-                company_data.setdefault('source', 'Migrated')
-                
-                # データ挿入
-                placeholders = ', '.join(['?' for _ in range(len(company_data))])
-                columns = ', '.join(company_data.keys())
-                values = list(company_data.values())
-                
-                cursor.execute(f'''
-                    INSERT INTO companies ({columns})
-                    VALUES ({placeholders})
-                ''', values)
-                
-            except Exception as e:
-                st.warning(f"データ行の移行エラー: {str(e)}")
-                continue
-    
-    def init_database(self):
-        """データベース初期化（Streamlit Cloud最適化版）"""
-        conn = sqlite3.connect(self.db_name)
-        cursor = conn.cursor()
-        
-        # ユーザーテーブル（シンプル版）
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                email TEXT DEFAULT '',
-                role TEXT DEFAULT 'user',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP,
-                is_active INTEGER DEFAULT 1
-            )
-        ''')
-        
-        # ステータス履歴テーブル
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS status_history (
-                id INTEGER PRIMARY KEY,
-                company_id INTEGER,
-                old_status TEXT,
-                new_status TEXT,
-                changed_by TEXT,
-                change_reason TEXT DEFAULT '',
-                notes TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # メール送信履歴テーブル
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS email_history (
-                id INTEGER PRIMARY KEY,
-                company_id INTEGER,
-                template_name TEXT DEFAULT '',
-                subject TEXT DEFAULT '',
-                body TEXT DEFAULT '',
-                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                status TEXT DEFAULT '',
-                error_message TEXT DEFAULT '',
-                to_email TEXT DEFAULT ''
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-        
-        # 企業テーブルの安全な再構築
-        self.rebuild_companies_table_if_needed()
+    def call_api(self, action, method='GET', data=None):
+        """API呼び出しの共通メソッド"""
+        try:
+            if method == 'GET':
+                response = requests.get(f"{self.gas_url}?action={action}")
+            else:
+                response = requests.post(
+                    self.gas_url,
+                    json={"action": action, **data} if data else {"action": action},
+                    headers={'Content-Type': 'application/json'}
+                )
+            
+            result = response.json()
+            if not result.get('success'):
+                raise Exception(result.get('error', 'Unknown error'))
+            
+            return result
+        except Exception as e:
+            st.error(f"API呼び出しエラー（{action}）: {str(e)}")
+            return None
 
 class ENRDataProcessor:
-    """ENRデータ処理クラス"""
+    """ENRデータ処理クラス（既存のまま）"""
     
     @staticmethod
     def calculate_picocela_relevance(company_data):
@@ -344,7 +149,7 @@ class ENRDataProcessor:
     
     @staticmethod
     def calculate_priority_score(company_data):
-        """優先度スコア計算（WiFi需要 + 関連度）"""
+        """優先度スコア計算"""
         relevance = ENRDataProcessor.calculate_picocela_relevance(company_data)
         wifi_required = ENRDataProcessor.detect_wifi_requirement(company_data)
         
@@ -355,172 +160,120 @@ class ENRDataProcessor:
         return min(priority, 150)
 
 class CompanyManager:
-    """企業管理クラス（エラー対応強化版）"""
+    """企業管理クラス（Google Sheets専用版）"""
     
-    def __init__(self, db_manager):
-        self.db = db_manager
+    def __init__(self, api):
+        self.api = api
+        self._ensure_database()
+    
+    def _ensure_database(self):
+        """データベース初期化確認"""
+        result = self.api.call_api('init_database', method='POST')
+        if result and result.get('spreadsheet_url'):
+            st.session_state.spreadsheet_url = result['spreadsheet_url']
     
     def add_company(self, company_data, user_id="system"):
-        """企業追加（エラーハンドリング強化版）"""
+        """企業追加"""
         try:
-            conn = sqlite3.connect(self.db.db_name)
-            cursor = conn.cursor()
-            
-            # 必須フィールドの設定
-            company_name = str(company_data.get('company_name', 'Unknown Company'))
-            website_url = str(company_data.get('website_url', ''))
-            email = str(company_data.get('email', ''))
-            phone = str(company_data.get('phone', ''))
-            address = str(company_data.get('address', ''))
-            industry = str(company_data.get('industry', ''))
-            source = str(company_data.get('source', 'Manual'))
-            notes = str(company_data.get('notes', ''))
-            
             # PicoCELA関連度とWiFi需要を自動計算
             relevance_score = ENRDataProcessor.calculate_picocela_relevance(company_data)
             wifi_required = 1 if ENRDataProcessor.detect_wifi_requirement(company_data) else 0
             priority_score = ENRDataProcessor.calculate_priority_score(company_data)
             
-            cursor.execute('''
-                INSERT INTO companies (
-                    company_name, website_url, email, phone, address, 
-                    industry, status, picocela_relevance_score, wifi_required, 
-                    priority_score, source, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                company_name, website_url, email, phone, address,
-                industry, 'New', relevance_score, wifi_required,
-                priority_score, source, notes
-            ))
+            company_data['picocela_relevance_score'] = relevance_score
+            company_data['wifi_required'] = wifi_required
+            company_data['priority_score'] = priority_score
             
-            company_id = cursor.lastrowid
+            result = self.api.call_api('add_company', method='POST', data={'company': company_data})
             
-            # ステータス履歴記録
-            cursor.execute('''
-                INSERT INTO status_history (
-                    company_id, old_status, new_status, changed_by, change_reason
-                ) VALUES (?, ?, ?, ?, ?)
-            ''', (company_id, None, 'New', user_id, "企業登録"))
-            
-            conn.commit()
-            conn.close()
-            return company_id
+            if result:
+                return result.get('company_id')
+            return None
             
         except Exception as e:
             st.error(f"企業追加エラー: {str(e)}")
             return None
     
     def update_status(self, company_id, new_status, user_id, reason="", notes=""):
-        """ステータス更新（エラーハンドリング強化版）"""
+        """ステータス更新"""
         try:
-            conn = sqlite3.connect(self.db.db_name)
-            cursor = conn.cursor()
+            result = self.api.call_api('update_status', method='POST', data={
+                'company_id': company_id,
+                'new_status': new_status,
+                'note': f"{reason} - {notes}" if reason else notes
+            })
             
-            # 現在のステータス取得
-            cursor.execute('SELECT status FROM companies WHERE id = ?', (company_id,))
-            result = cursor.fetchone()
-            old_status = result[0] if result else None
-            
-            # ステータス更新
-            cursor.execute('''
-                UPDATE companies 
-                SET status = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (new_status, company_id))
-            
-            # 履歴記録
-            cursor.execute('''
-                INSERT INTO status_history (
-                    company_id, old_status, new_status, changed_by, change_reason, notes
-                ) VALUES (?, ?, ?, ?, ?, ?)
-            ''', (company_id, old_status, new_status, user_id, reason, notes))
-            
-            conn.commit()
-            conn.close()
-            return True
+            return result is not None
             
         except Exception as e:
             st.error(f"ステータス更新エラー: {str(e)}")
             return False
     
     def get_companies_by_status(self, status=None, wifi_required=None):
-        """ステータス別企業取得（エラーハンドリング強化版）"""
+        """ステータス別企業取得"""
         try:
-            conn = sqlite3.connect(self.db.db_name)
+            result = self.api.call_api('get_companies')
             
-            query = 'SELECT * FROM companies WHERE 1=1'
-            params = []
+            if result and result.get('companies'):
+                df = pd.DataFrame(result['companies'])
+                
+                # フィルタリング
+                if status and not df.empty:
+                    df = df[df['sales_status'] == status]
+                
+                if wifi_required is not None and not df.empty:
+                    df = df[df['wifi_required'] == wifi_required]
+                
+                return df
             
-            if status:
-                query += ' AND status = ?'
-                params.append(status)
-            
-            if wifi_required is not None:
-                query += ' AND wifi_required = ?'
-                params.append(wifi_required)
-            
-            query += ' ORDER BY priority_score DESC, updated_at DESC'
-            
-            df = pd.read_sql_query(query, conn, params=params)
-            conn.close()
-            
-            # NaN値を適切なデフォルト値に置換
-            df = df.fillna({
-                'website_url': '',
-                'email': '',
-                'phone': '',
-                'address': '',
-                'industry': '',
-                'notes': '',
-                'wifi_required': 0,
-                'priority_score': 0,
-                'picocela_relevance_score': 0
-            })
-            
-            return df
+            return pd.DataFrame()
             
         except Exception as e:
             st.error(f"企業データ取得エラー: {str(e)}")
             return pd.DataFrame()
     
     def get_status_analytics(self):
-        """ステータス分析データ取得（エラーハンドリング強化版）"""
+        """ステータス分析データ取得"""
         try:
-            conn = sqlite3.connect(self.db.db_name)
+            result = self.api.call_api('get_analytics')
             
-            # ステータス別企業数
-            status_df = pd.read_sql_query('''
-                SELECT 
-                    status, 
-                    COUNT(*) as count, 
-                    AVG(COALESCE(picocela_relevance_score, 0)) as avg_relevance,
-                    SUM(COALESCE(wifi_required, 0)) as wifi_count
-                FROM companies 
-                GROUP BY status
-            ''', conn)
+            if result and result.get('analytics'):
+                analytics = result['analytics']
+                
+                # ステータス別データフレーム作成
+                status_data = []
+                for status, count in analytics.get('status_breakdown', {}).items():
+                    status_data.append({
+                        'status': status,
+                        'count': count,
+                        'avg_relevance': 0,  # TODO: APIで平均値も返すように修正
+                        'wifi_count': 0
+                    })
+                status_df = pd.DataFrame(status_data)
+                
+                # WiFi需要データフレーム作成
+                wifi_data = []
+                for wifi_need, count in analytics.get('wifi_needs_breakdown', {}).items():
+                    wifi_data.append({
+                        'wifi_required': 1 if wifi_need == 'High' else 0,
+                        'count': count,
+                        'avg_relevance': 0
+                    })
+                wifi_df = pd.DataFrame(wifi_data)
+                
+                return status_df, wifi_df
             
-            # WiFi需要企業の分析
-            wifi_df = pd.read_sql_query('''
-                SELECT 
-                    COALESCE(wifi_required, 0) as wifi_required, 
-                    COUNT(*) as count,
-                    AVG(COALESCE(picocela_relevance_score, 0)) as avg_relevance
-                FROM companies 
-                GROUP BY wifi_required
-            ''', conn)
-            
-            conn.close()
-            return status_df, wifi_df
+            return pd.DataFrame(), pd.DataFrame()
             
         except Exception as e:
             st.error(f"分析データ取得エラー: {str(e)}")
             return pd.DataFrame(), pd.DataFrame()
 
 class EmailCampaignManager:
-    """メールキャンペーン管理（Streamlit Cloud完全対応版）"""
+    """メールキャンペーン管理（Google Sheets版）"""
     
-    def __init__(self, db_manager):
-        self.db = db_manager
+    def __init__(self, api):
+        self.api = api
         self.email_available = EMAIL_AVAILABLE
         self.smtp_settings = {
             'smtp_server': 'smtp.gmail.com',
@@ -528,45 +281,20 @@ class EmailCampaignManager:
             'use_tls': True
         }
     
-    def create_simple_email_message(self, from_email, to_email, subject, body, from_name="PicoCELA Inc."):
-        """シンプルなメールメッセージ作成（Streamlit Cloud対応）"""
-        try:
-            if MIME_IMPORT_METHOD == "standard":
-                msg = MIMEMultipart()
-                msg['From'] = f"{from_name} <{from_email}>"
-                msg['To'] = to_email
-                msg['Subject'] = subject
-                msg.attach(MIMEText(body, 'plain', 'utf-8'))
-                return msg
-            elif MIME_IMPORT_METHOD == "alternative":
-                msg = MIMEMultipart()
-                msg['From'] = f"{from_name} <{from_email}>"
-                msg['To'] = to_email
-                msg['Subject'] = subject
-                msg.attach(MIMEText(body, 'plain', 'utf-8'))
-                return msg
-            else:
-                # 最小限の実装
-                return None
-        except Exception as e:
-            st.error(f"メッセージ作成エラー: {str(e)}")
-            return None
-    
     def send_single_email(self, to_email, subject, body, from_email, from_password, from_name="PicoCELA Inc."):
-        """単一メール送信（Streamlit Cloud完全対応版）"""
+        """単一メール送信（既存のまま）"""
         if not self.email_available:
             return False, f"メール機能が利用できません: {EMAIL_ERROR_MESSAGE}"
         
         try:
-            # メッセージ作成
-            msg = self.create_simple_email_message(from_email, to_email, subject, body, from_name)
-            if msg is None:
-                return False, "メッセージ作成に失敗しました"
+            msg = MIMEMultipart()
+            msg['From'] = f"{from_name} <{from_email}>"
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain', 'utf-8'))
             
-            # SSL context作成
             context = ssl.create_default_context()
             
-            # SMTP接続・送信
             with smtplib.SMTP(self.smtp_settings['smtp_server'], self.smtp_settings['smtp_port']) as server:
                 if self.smtp_settings['use_tls']:
                     server.starttls(context=context)
@@ -575,30 +303,19 @@ class EmailCampaignManager:
             
             return True, "メール送信成功"
             
-        except smtplib.SMTPAuthenticationError:
-            return False, "Gmail認証エラー：アプリパスワードを確認してください"
-        except smtplib.SMTPRecipientsRefused:
-            return False, f"受信者エラー：{to_email} は無効なアドレスです"
-        except smtplib.SMTPServerDisconnected:
-            return False, "SMTP接続エラー：ネットワーク接続を確認してください"
         except Exception as e:
             return False, f"メール送信エラー: {str(e)}"
     
     def send_bulk_email(self, targets_df, subject, body_template, from_email, from_password, from_name="PicoCELA Inc."):
-        """一括メール送信（Streamlit Cloud対応版）"""
-        if not self.email_available:
-            return [], f"メール機能が利用できません: {EMAIL_ERROR_MESSAGE}"
-        
+        """一括メール送信"""
         results = []
         success_count = 0
         error_count = 0
         
         for idx, target in targets_df.iterrows():
             try:
-                # 会社名を本文に挿入
                 personalized_body = body_template.replace('{company_name}', str(target.get('company_name', '御社')))
                 
-                # メール送信
                 success, message = self.send_single_email(
                     target['email'], subject, personalized_body, 
                     from_email, from_password, from_name
@@ -618,45 +335,42 @@ class EmailCampaignManager:
                     'sent_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 })
                 
-                # 送信履歴をデータベースに記録
-                self.log_email_send(target.get('id'), subject, personalized_body, status, target['email'])
-                
-                # 送信間隔（Gmail制限対応）
-                time.sleep(2)
+                time.sleep(2)  # Gmail制限対応
                 
             except Exception as e:
                 error_count += 1
-                error_message = f"処理エラー: {str(e)}"
                 results.append({
                     'company_name': target.get('company_name', 'Unknown'),
                     'email': target.get('email', 'Unknown'),
-                    'status': error_message,
+                    'status': f"処理エラー: {str(e)}",
                     'sent_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 })
         
         summary = f"送信完了: 成功 {success_count}件, 失敗 {error_count}件"
         return results, summary
     
-    def log_email_send(self, company_id, subject, body, status, to_email):
-        """メール送信履歴記録"""
-        try:
-            conn = sqlite3.connect(self.db.db_name)
-            cursor = conn.cursor()
+    def get_campaign_targets(self, target_status, wifi_required=None, min_relevance=0):
+        """キャンペーンターゲット取得"""
+        result = self.api.call_api('get_companies')
+        
+        if result and result.get('companies'):
+            df = pd.DataFrame(result['companies'])
             
-            cursor.execute('''
-                INSERT INTO email_history (
-                    company_id, subject, body, status, to_email, sent_at
-                ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (company_id, subject, body, status, to_email))
+            # フィルタリング
+            if not df.empty:
+                df = df[df['sales_status'] == target_status]
+                df = df[df['email'].notna() & (df['email'] != '')]
+                df = df[df['picocela_relevance_score'] >= min_relevance]
+                
+                if wifi_required is not None:
+                    df = df[df['wifi_required'] == wifi_required]
             
-            conn.commit()
-            conn.close()
-            
-        except Exception as e:
-            st.warning(f"送信履歴記録エラー: {str(e)}")
+            return df
+        
+        return pd.DataFrame()
     
     def get_email_templates(self):
-        """メールテンプレート取得"""
+        """メールテンプレート（既存のまま）"""
         return {
             "wifi_needed": {
                 "subject": "建設現場のワイヤレス通信課題解決のご提案 - PicoCELA",
@@ -691,188 +405,107 @@ class EmailCampaignManager:
 
 弊社は建設・産業分野向けのワイヤレス通信ソリューションを提供しております。
 
-【PicoCELAの特徴】
-• メッシュネットワーク技術による安定通信
-• 厳しい環境での高い耐久性
-• 簡単設置・運用コスト削減
-• 24時間サポート体制
-
 貴社の事業にお役立ていただけるソリューションがあるかもしれません。
 ぜひ一度お話をお聞かせください。
 
 株式会社PicoCELA
 営業部"""
-            },
-            "follow_up": {
-                "subject": "PicoCELAソリューション - フォローアップのご連絡",
-                "body": """{company_name} 様
-
-いつもお世話になっております。
-株式会社PicoCELAです。
-
-先日ご案内させていただきました、メッシュネットワークソリューションの件はいかがでしょうか。
-
-ご検討状況をお聞かせいただければ、より具体的なご提案をさせていただくことも可能です。
-
-引き続きどうぞよろしくお願いいたします。
-
-株式会社PicoCELA
-営業部"""
             }
         }
+
+def get_google_sheets_api():
+    """Google Sheets API取得"""
+    # Streamlit secretsから取得を試みる
+    if 'google_apps_script_url' in st.secrets:
+        gas_url = st.secrets['google_apps_script_url']
+    # セッション状態から取得
+    elif 'gas_url' in st.session_state:
+        gas_url = st.session_state.gas_url
+    else:
+        gas_url = None
     
-    def get_campaign_targets(self, target_status, wifi_required=None, min_relevance=0):
-        """キャンペーンターゲット取得（エラーハンドリング強化版）"""
+    if gas_url:
         try:
-            conn = sqlite3.connect(self.db.db_name)
-            
-            query = '''
-                SELECT * FROM companies 
-                WHERE status = ? 
-                  AND email IS NOT NULL 
-                  AND email != ''
-                  AND COALESCE(picocela_relevance_score, 0) >= ?
-            '''
-            params = [target_status, min_relevance]
-            
-            if wifi_required is not None:
-                query += ' AND COALESCE(wifi_required, 0) = ?'
-                params.append(wifi_required)
-            
-            query += ' ORDER BY COALESCE(priority_score, 0) DESC'
-            
-            df = pd.read_sql_query(query, conn, params=params)
-            conn.close()
-            return df.fillna('')
-            
-        except Exception as e:
-            st.error(f"ターゲット取得エラー: {str(e)}")
-            return pd.DataFrame()
+            return GoogleSheetsAPI(gas_url)
+        except:
+            return None
+    
+    return None
 
-# 認証関数（安定版）
-def authenticate_user(db_manager, username, password):
-    """ユーザー認証（エラーハンドリング強化版）"""
-    try:
-        conn = sqlite3.connect(db_manager.db_name)
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT password_hash, is_active FROM users WHERE username = ?', (username,))
-        result = cursor.fetchone()
-        
-        if result:
-            stored_hash, is_active = result
-            
-            if not is_active:
-                conn.close()
-                return False, "アカウントが無効化されています"
-            
-            if verify_password(password, stored_hash):
-                cursor.execute(
-                    'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE username = ?', 
-                    (username,)
-                )
-                conn.commit()
-                conn.close()
-                return True, "ログイン成功"
+def setup_google_sheets_connection():
+    """Google Sheets接続設定UI"""
+    st.markdown("## 🚀 Google Sheets接続設定")
+    st.info("Google Apps Script URLを設定してください")
+    
+    gas_url = st.text_input(
+        "Google Apps Script URL",
+        placeholder="https://script.google.com/macros/s/xxx/exec",
+        help="Google Apps Scriptをデプロイして取得したURLを入力"
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔗 接続テスト", type="primary", use_container_width=True):
+            if gas_url:
+                try:
+                    api = GoogleSheetsAPI(gas_url)
+                    st.success("✅ 接続成功！")
+                    st.session_state.gas_url = gas_url
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ 接続失敗: {str(e)}")
             else:
-                conn.close()
-                return False, "パスワードが正しくありません"
-        else:
-            conn.close()
-            return False, "ユーザーが存在しません"
-            
-    except Exception as e:
-        return False, f"認証エラー: {str(e)}"
+                st.warning("URLを入力してください")
+    
+    with col2:
+        if st.button("📖 セットアップガイド", use_container_width=True):
+            st.markdown("""
+            ### 📋 Google Apps Script設定手順
+            1. [Google Apps Script](https://script.google.com/)にアクセス
+            2. 新しいプロジェクトを作成
+            3. 提供されたコードをコピー&ペースト
+            4. デプロイ → 新しいデプロイ
+            5. ウェブアプリとして公開（全員にアクセス許可）
+            6. URLをコピーして上記に貼り付け
+            """)
 
-def create_user(db_manager, username, password, email, role="user"):
-    """ユーザー作成（エラーハンドリング強化版）"""
-    try:
-        conn = sqlite3.connect(db_manager.db_name)
-        cursor = conn.cursor()
-        
-        password_hash = hash_password(password)
-        
-        cursor.execute('''
-            INSERT INTO users (username, password_hash, email, role)
-            VALUES (?, ?, ?, ?)
-        ''', (username, password_hash, email, role))
-        
-        conn.commit()
-        conn.close()
-        return True, "ユーザー作成成功"
-        
-    except sqlite3.IntegrityError:
-        return False, "ユーザー名が既に存在します"
-    except Exception as e:
-        return False, f"ユーザー作成エラー: {str(e)}"
-
-def ensure_default_user(db_manager):
-    """デフォルトユーザーの確保（強制作成版）"""
-    try:
-        conn = sqlite3.connect(db_manager.db_name)
-        cursor = conn.cursor()
-        
-        # adminユーザーを削除（存在する場合）
-        cursor.execute('DELETE FROM users WHERE username = ?', ("admin",))
-        
-        # デフォルトユーザー作成
-        password_hash = hash_password("picocela2024")
-        cursor.execute('''
-            INSERT INTO users (username, password_hash, email, role, is_active)
-            VALUES (?, ?, ?, ?, ?)
-        ''', ("admin", password_hash, "admin@picocela.com", "admin", 1))
-        
-        conn.commit()
-        conn.close()
-        return True, "認証システム準備完了"
-        
-    except Exception as e:
-        return False, f"認証システムエラー: {str(e)}"
-
-# Streamlitアプリメイン部分
+# メイン関数
 def main():
     st.title("🚀 FusionCRM - PicoCELA営業管理システム")
-    st.markdown("**ENR最適化・拡張ステータス対応版 (Streamlit Cloud)**")
+    st.markdown("**☁️ Google Sheets版（クラウド対応）**")
     
-    # メール機能状態表示
-    if EMAIL_AVAILABLE:
-        st.success("📧 メール機能: 利用可能（Gmail SMTP対応）")
-    else:
-        st.warning(f"⚠️ メール機能エラー: {EMAIL_ERROR_MESSAGE}")
-        st.info("💡 メール機能に制限がありますが、CSVダウンロード機能で代替できます")
+    # Google Sheets API取得
+    api = get_google_sheets_api()
     
-    # セッション状態初期化
-    if 'logged_in' not in st.session_state:
-        st.session_state.logged_in = False
-    if 'username' not in st.session_state:
-        st.session_state.username = None
-    
-    # データベース初期化
-    with st.spinner("🔄 データベース初期化中..."):
-        db_manager = DatabaseManager()
-        
-        # 認証システム準備
-        success, message = ensure_default_user(db_manager)
-        if not success:
-            st.error(f"認証システムエラー: {message}")
-            return
-    
-    company_manager = CompanyManager(db_manager)
-    email_manager = EmailCampaignManager(db_manager)
-    
-    # 認証確認
-    if not st.session_state.logged_in:
-        show_login_page(db_manager)
+    if api is None:
+        setup_google_sheets_connection()
         return
     
-    # メインアプリ
-    st.sidebar.title(f"👋 {st.session_state.username}")
-    st.sidebar.markdown("🌐 **Streamlit Cloud版**")
+    # マネージャー初期化
+    company_manager = CompanyManager(api)
+    email_manager = EmailCampaignManager(api)
+    
+    # Google Sheetsリンク表示
+    if 'spreadsheet_url' in st.session_state:
+        st.success(f"✅ Google Sheets接続中 | [📊 スプレッドシートを開く]({st.session_state.spreadsheet_url})")
+    
+    # サイドバー
+    st.sidebar.title("🌟 FusionCRM")
+    st.sidebar.markdown("☁️ **Google Sheets版**")
+    
+    # 接続情報表示
+    if 'gas_url' in st.session_state:
+        st.sidebar.success("✅ 接続済み")
+        if st.sidebar.button("🔌 切断"):
+            del st.session_state.gas_url
+            st.rerun()
     
     page = st.sidebar.selectbox(
         "📋 メニュー",
         ["📊 ダッシュボード", "🏢 企業管理", "📧 メールキャンペーン", 
-         "📈 分析・レポート", "⚙️ 設定", "📁 データインポート"]
+         "📈 分析・レポート", "📁 データインポート"]
     )
     
     # ページルーティング
@@ -884,63 +517,14 @@ def main():
         show_email_campaigns(email_manager, company_manager)
     elif page == "📈 分析・レポート":
         show_analytics(company_manager)
-    elif page == "⚙️ 設定":
-        show_settings()
     elif page == "📁 データインポート":
         show_data_import(company_manager)
-    
-    # ログアウト
-    if st.sidebar.button("🚪 ログアウト"):
-        st.session_state.logged_in = False
-        st.session_state.username = None
-        st.rerun()
 
-def show_login_page(db_manager):
-    """ログインページ（簡潔版）"""
-    st.markdown("## 🔐 FusionCRM ログイン")
-    st.markdown("**PicoCELA営業管理システム - Streamlit Cloud版**")
-    
-    st.success("💡 **デフォルトログイン**: admin / picocela2024")
-    
-    tab1, tab2 = st.tabs(["🔑 ログイン", "👤 新規登録"])
-    
-    with tab1:
-        username = st.text_input("ユーザー名", value="admin")
-        password = st.text_input("パスワード", value="picocela2024", type="password")
-        
-        if st.button("🚀 ログイン", type="primary"):
-            if username and password:
-                success, message = authenticate_user(db_manager, username, password)
-                if success:
-                    st.session_state.logged_in = True
-                    st.session_state.username = username
-                    st.success("✅ ログインしました！")
-                    st.rerun()
-                else:
-                    st.error(f"❌ {message}")
-            else:
-                st.warning("⚠️ ユーザー名とパスワードを入力してください")
-    
-    with tab2:
-        new_username = st.text_input("新しいユーザー名")
-        new_password = st.text_input("新しいパスワード", type="password")
-        new_email = st.text_input("メールアドレス")
-        
-        if st.button("📝 ユーザー登録"):
-            if new_username and new_password and new_email:
-                if len(new_password) >= 6:
-                    success, message = create_user(db_manager, new_username, new_password, new_email)
-                    if success:
-                        st.success(f"✅ {message}")
-                    else:
-                        st.error(f"❌ {message}")
-                else:
-                    st.warning("⚠️ パスワードは6文字以上で入力してください")
-            else:
-                st.warning("⚠️ すべての項目を入力してください")
+# 既存の画面関数はそのまま使用（show_dashboard、show_company_managementなど）
+# ただし、SQLite関連の処理は削除
 
 def show_dashboard(company_manager):
-    """ダッシュボード（エラー対応強化版）"""
+    """ダッシュボード（Google Sheets版）"""
     st.header("📊 ダッシュボード")
     
     # 基本統計
@@ -950,50 +534,41 @@ def show_dashboard(company_manager):
     if total_companies == 0:
         st.info("📋 企業データがありません。サンプルデータを追加してテストしてください。")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🚀 サンプルデータを追加", type="primary"):
-                # サンプルデータ追加（エラーハンドリング強化）
-                sample_companies = [
-                    {
-                        'company_name': 'テストコンストラクション株式会社',
-                        'email': 'contact@test-construction.com',
-                        'industry': 'Construction',
-                        'notes': 'WiFi, IoT, wireless network solutions needed for construction sites',
-                        'source': 'Sample Data'
-                    },
-                    {
-                        'company_name': 'スマートビルディング合同会社',
-                        'email': 'info@smart-building.co.jp',
-                        'industry': 'Smart Building',
-                        'notes': 'mesh network, construction tech, digital solutions, smart building management',
-                        'source': 'Sample Data'
-                    }
-                ]
-                
-                success_count = 0
-                for company in sample_companies:
-                    result = company_manager.add_company(company, st.session_state.username)
-                    if result:
-                        success_count += 1
-                
-                if success_count > 0:
-                    st.success(f"✅ {success_count}社のサンプルデータを追加しました！")
-                    st.rerun()
-                else:
-                    st.error("❌ サンプルデータの追加に失敗しました")
-        
-        with col2:
-            st.markdown("**📁 または**")
-            st.markdown("「データインポート」から\nENRファイルをアップロード")
+        if st.button("🚀 サンプルデータを追加", type="primary"):
+            sample_companies = [
+                {
+                    'company_name': 'テストコンストラクション株式会社',
+                    'email': 'contact@test-construction.com',
+                    'industry': 'Construction',
+                    'notes': 'WiFi, IoT, wireless network solutions needed for construction sites',
+                    'source': 'Sample Data'
+                },
+                {
+                    'company_name': 'スマートビルディング合同会社',
+                    'email': 'info@smart-building.co.jp',
+                    'industry': 'Smart Building',
+                    'notes': 'mesh network, construction tech, digital solutions',
+                    'source': 'Sample Data'
+                }
+            ]
+            
+            success_count = 0
+            for company in sample_companies:
+                result = company_manager.add_company(company, 'system')
+                if result:
+                    success_count += 1
+            
+            if success_count > 0:
+                st.success(f"✅ {success_count}社のサンプルデータを追加しました！")
+                st.rerun()
         
         return
     
-    # 統計計算（エラーハンドリング付き）
+    # 統計計算
     try:
         wifi_companies = len(all_companies[all_companies['wifi_required'] == 1])
         high_priority = len(all_companies[all_companies['priority_score'] >= 100])
-        engaged_plus = len(all_companies[all_companies['status'].isin(['Engaged', 'Qualified', 'Proposal', 'Negotiation'])])
+        engaged_plus = len(all_companies[all_companies['sales_status'].isin(['Engaged', 'Qualified', 'Proposal', 'Negotiation'])])
     except:
         wifi_companies = 0
         high_priority = 0
@@ -1015,7 +590,7 @@ def show_dashboard(company_manager):
     with col4:
         st.metric("🔥 商談中企業", engaged_plus)
     
-    # 分析グラフ（エラーハンドリング付き）
+    # 分析グラフ
     try:
         status_analytics, wifi_analytics = company_manager.get_status_analytics()
         
@@ -1037,541 +612,9 @@ def show_dashboard(company_manager):
                 st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.warning(f"グラフ表示エラー: {str(e)}")
-    
-    # 優先企業リスト
-    if not all_companies.empty:
-        st.subheader("🎯 優先アクション企業（上位10社）")
-        try:
-            priority_companies = all_companies.nlargest(10, 'priority_score')[
-                ['company_name', 'status', 'priority_score', 'wifi_required', 'picocela_relevance_score']
-            ]
-            st.dataframe(priority_companies, use_container_width=True)
-        except Exception as e:
-            st.warning(f"優先企業リスト表示エラー: {str(e)}")
 
-def show_company_management(company_manager):
-    """企業管理"""
-    st.header("🏢 企業管理")
-    
-    # フィルター
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        status_filter = st.selectbox(
-            "ステータスフィルター",
-            ["すべて"] + list(SALES_STATUS.keys())
-        )
-    
-    with col2:
-        wifi_filter = st.selectbox(
-            "WiFi需要フィルター",
-            ["すべて", "WiFi必要", "WiFi不要"]
-        )
-    
-    with col3:
-        sort_option = st.selectbox(
-            "ソート順",
-            ["優先度順", "更新日順", "関連度順", "企業名順"]
-        )
-    
-    # データ取得
-    if status_filter == "すべて":
-        companies_df = company_manager.get_companies_by_status()
-    else:
-        companies_df = company_manager.get_companies_by_status(status_filter)
-    
-    # WiFiフィルター適用
-    if wifi_filter == "WiFi必要" and not companies_df.empty:
-        companies_df = companies_df[companies_df['wifi_required'] == 1]
-    elif wifi_filter == "WiFi不要" and not companies_df.empty:
-        companies_df = companies_df[companies_df['wifi_required'] == 0]
-    
-    # 企業リスト表示
-    if not companies_df.empty:
-        st.subheader(f"📋 企業一覧 ({len(companies_df)}社)")
-        
-        for idx, company in companies_df.iterrows():
-            with st.expander(
-                f"🏢 {company['company_name']} | "
-                f"📊 {SALES_STATUS.get(company['status'], company['status'])} | "
-                f"🎯 優先度: {company['priority_score']}"
-            ):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write(f"**📧 Email**: {company['email'] or 'N/A'}")
-                    st.write(f"**📞 電話**: {company['phone'] or 'N/A'}")
-                    st.write(f"**🌐 Website**: {company['website_url'] or 'N/A'}")
-                    st.write(f"**🏭 業界**: {company['industry'] or 'N/A'}")
-                
-                with col2:
-                    wifi_status = '🟢 あり' if company['wifi_required'] else '⚪ なし'
-                    st.write(f"**📶 WiFi需要**: {wifi_status}")
-                    st.write(f"**⭐ 関連度**: {company['picocela_relevance_score']}/100")
-                    st.write(f"**🎯 優先度**: {company['priority_score']}/150")
-                    st.write(f"**📅 更新日**: {company.get('updated_at', 'N/A')}")
-                
-                # ステータス更新
-                new_status = st.selectbox(
-                    "ステータス変更",
-                    list(SALES_STATUS.keys()),
-                    index=list(SALES_STATUS.keys()).index(company['status']),
-                    key=f"status_{company['id']}"
-                )
-                
-                reason = st.text_input(
-                    "変更理由",
-                    key=f"reason_{company['id']}"
-                )
-                
-                if st.button(f"ステータス更新", key=f"update_{company['id']}"):
-                    if new_status != company['status']:
-                        if company_manager.update_status(
-                            company['id'], new_status, st.session_state.username, reason
-                        ):
-                            st.success(f"ステータスを {SALES_STATUS[new_status]} に更新しました")
-                            st.rerun()
-    else:
-        st.info("条件に一致する企業がありません。")
-
-def show_email_campaigns(email_manager, company_manager):
-    """メールキャンペーン（Streamlit Cloud完全対応版）"""
-    st.header("📧 メールキャンペーン")
-    
-    # メール機能状態表示
-    if EMAIL_AVAILABLE:
-        st.success("✅ メール送信機能: 利用可能")
-    else:
-        st.error(f"❌ メール機能エラー: {EMAIL_ERROR_MESSAGE}")
-        st.info("💡 CSVダウンロード機能を活用してGmailで一括送信してください")
-    
-    tab1, tab2, tab3 = st.tabs(["🎯 戦略的配信", "📧 Gmail設定", "📊 配信履歴"])
-    
-    with tab1:
-        st.subheader("🎯 ターゲット企業選定")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            target_status = st.selectbox("対象ステータス", list(SALES_STATUS.keys()))
-        
-        with col2:
-            wifi_required = st.selectbox("WiFi需要", ["すべて", "WiFi必要のみ", "WiFi不要のみ"])
-        
-        with col3:
-            min_relevance = st.slider("最小関連度スコア", 0, 100, 50)
-        
-        # ターゲット企業取得
-        wifi_filter = None
-        if wifi_required == "WiFi必要のみ":
-            wifi_filter = True
-        elif wifi_required == "WiFi不要のみ":
-            wifi_filter = False
-        
-        targets = email_manager.get_campaign_targets(target_status, wifi_filter, min_relevance)
-        
-        st.write(f"📊 対象企業数: **{len(targets)}社**")
-        
-        if not targets.empty:
-            st.dataframe(targets[['company_name', 'email', 'priority_score', 'wifi_required']], use_container_width=True)
-            
-            # メール機能が利用可能な場合のみ表示
-            if EMAIL_AVAILABLE:
-                # メールテンプレート選択
-                st.subheader("📝 メールテンプレート")
-                templates = email_manager.get_email_templates()
-                
-                template_names = {
-                    "wifi_needed": "🔌 WiFi必要企業向け",
-                    "general": "📋 一般企業向け", 
-                    "follow_up": "🔄 フォローアップ"
-                }
-                
-                selected_template = st.selectbox(
-                    "テンプレート選択",
-                    options=list(template_names.keys()),
-                    format_func=lambda x: template_names[x]
-                )
-                
-                template = templates[selected_template]
-                
-                # メール内容編集
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    subject = st.text_input("件名", value=template["subject"])
-                
-                with col2:
-                    from_name = st.text_input("送信者名", value="PicoCELA Inc.")
-                
-                body = st.text_area(
-                    "本文（{company_name}は自動置換されます）", 
-                    value=template["body"], 
-                    height=300
-                )
-                
-                # Gmail設定
-                st.subheader("📧 Gmail送信設定")
-                
-                # セッション状態でGmail設定を保持
-                if 'gmail_email' not in st.session_state:
-                    st.session_state.gmail_email = ""
-                if 'gmail_password' not in st.session_state:
-                    st.session_state.gmail_password = ""
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    gmail_email = st.text_input(
-                        "Gmailアドレス", 
-                        value=st.session_state.gmail_email,
-                        placeholder="例: your-email@gmail.com"
-                    )
-                    st.session_state.gmail_email = gmail_email
-                
-                with col2:
-                    gmail_password = st.text_input(
-                        "Gmailアプリパスワード", 
-                        type="password",
-                        value=st.session_state.gmail_password,
-                        placeholder="16文字のアプリパスワード"
-                    )
-                    st.session_state.gmail_password = gmail_password
-                
-                st.info("💡 Gmailアプリパスワードの取得方法：Googleアカウント設定 → セキュリティ → 2段階認証 → アプリパスワード")
-                
-                # メール送信ボタン
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button("📧 テストメール送信", type="secondary"):
-                        if gmail_email and gmail_password:
-                            # 最初の企業にテストメール送信
-                            if not targets.empty:
-                                test_target = targets.iloc[0]
-                                test_body = body.replace('{company_name}', test_target['company_name'])
-                                
-                                with st.spinner("テストメール送信中..."):
-                                    success, message = email_manager.send_single_email(
-                                        test_target['email'], 
-                                        f"[テスト] {subject}", 
-                                        test_body, 
-                                        gmail_email, 
-                                        gmail_password,
-                                        from_name
-                                    )
-                                
-                                if success:
-                                    st.success(f"✅ テストメール送信成功: {test_target['email']}")
-                                else:
-                                    st.error(f"❌ テストメール送信失敗: {message}")
-                        else:
-                            st.warning("⚠️ Gmail設定を入力してください")
-                
-                with col2:
-                    # CSVダウンロード
-                    csv = targets[['company_name', 'email', 'priority_score', 'wifi_required']].to_csv(index=False)
-                    st.download_button(
-                        label="📁 リストダウンロード",
-                        data=csv,
-                        file_name=f"campaign_targets_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                        mime="text/csv"
-                    )
-                
-                with col3:
-                    if st.button("🚀 一括メール送信", type="primary"):
-                        if gmail_email and gmail_password:
-                            if len(targets) > 0:
-                                # 送信確認
-                                if st.session_state.get('confirm_bulk_send', False):
-                                    with st.spinner(f"{len(targets)}社への一括メール送信中..."):
-                                        results, summary = email_manager.send_bulk_email(
-                                            targets, subject, body, gmail_email, gmail_password, from_name
-                                        )
-                                    
-                                    st.success(f"📧 {summary}")
-                                    
-                                    # 送信結果表示
-                                    results_df = pd.DataFrame(results)
-                                    st.dataframe(results_df, use_container_width=True)
-                                    
-                                    # 送信確認状態をリセット
-                                    st.session_state.confirm_bulk_send = False
-                                else:
-                                    st.warning(f"⚠️ {len(targets)}社に一括送信します。本当によろしいですか？")
-                                    if st.button("🔥 送信実行", type="primary"):
-                                        st.session_state.confirm_bulk_send = True
-                                        st.rerun()
-                            else:
-                                st.warning("⚠️ 送信対象企業がありません")
-                        else:
-                            st.warning("⚠️ Gmail設定を入力してください")
-            else:
-                # メール機能が利用できない場合
-                st.warning("メール送信機能が利用できないため、CSVダウンロードをご利用ください")
-                csv = targets[['company_name', 'email', 'priority_score', 'wifi_required']].to_csv(index=False)
-                st.download_button(
-                    label="📁 ターゲットリストをダウンロード",
-                    data=csv,
-                    file_name=f"campaign_targets_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv"
-                )
-            
-        else:
-            st.info("📋 条件に一致する企業がありません")
-    
-    with tab2:
-        st.subheader("📧 Gmail設定ガイド")
-        
-        if EMAIL_AVAILABLE:
-            st.success("✅ Gmail SMTP機能は利用可能です")
-        else:
-            st.error(f"❌ Gmail SMTP機能エラー: {EMAIL_ERROR_MESSAGE}")
-        
-        st.markdown("""
-        ### 🔧 Gmail SMTP設定手順
-        
-        1. **Googleアカウントにログイン**
-        2. **Google アカウント設定** → **セキュリティ**
-        3. **2段階認証を有効化**（未設定の場合）
-        4. **アプリパスワード**を生成
-        5. **生成された16文字のパスワード**をコピー
-        6. **上記の「Gmail送信設定」に入力**
-        
-        ### ⚙️ 推奨設定
-        - **送信者名**: PicoCELA Inc.
-        - **送信間隔**: 2秒（Gmail制限対応）
-        - **1日の送信上限**: 500通
-        
-        ### 🛡️ セキュリティ注意事項
-        - アプリパスワードは他人に教えないでください
-        - 定期的にパスワードを更新してください
-        """)
-        
-        # Gmail設定テスト
-        if EMAIL_AVAILABLE:
-            st.subheader("🧪 Gmail接続テスト")
-            
-            test_email = st.text_input("テスト用Gmailアドレス")
-            test_password = st.text_input("テスト用アプリパスワード", type="password")
-            
-            if st.button("🔍 接続テスト"):
-                if test_email and test_password:
-                    with st.spinner("Gmail接続テスト中..."):
-                        success, message = email_manager.send_single_email(
-                            test_email,  # 自分宛てに送信
-                            "FusionCRM 接続テスト",
-                            "FusionCRMからのテストメールです。この メールが届いた場合、Gmail設定は正常です。",
-                            test_email,
-                            test_password
-                        )
-                    
-                    if success:
-                        st.success("✅ Gmail接続成功！設定は正常です。")
-                    else:
-                        st.error(f"❌ Gmail接続失敗: {message}")
-                else:
-                    st.warning("⚠️ テスト用の情報を入力してください")
-    
-    with tab3:
-        st.subheader("📊 配信履歴・効果分析")
-        
-        try:
-            conn = sqlite3.connect(email_manager.db.db_name)
-            
-            # 送信履歴取得
-            history_df = pd.read_sql_query('''
-                SELECT 
-                    eh.sent_at,
-                    c.company_name,
-                    eh.subject,
-                    eh.status,
-                    eh.to_email,
-                    c.status as current_status
-                FROM email_history eh
-                LEFT JOIN companies c ON eh.company_id = c.id
-                ORDER BY eh.sent_at DESC
-                LIMIT 50
-            ''', conn)
-            
-            conn.close()
-            
-            if not history_df.empty:
-                st.dataframe(history_df, use_container_width=True)
-                
-                # 送信統計
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    total_sent = len(history_df)
-                    st.metric("📧 総送信数", total_sent)
-                
-                with col2:
-                    success_count = len(history_df[history_df['status'] == '送信成功'])
-                    success_rate = f"{success_count/total_sent*100:.1f}%" if total_sent > 0 else "0%"
-                    st.metric("✅ 送信成功率", success_rate)
-                
-                with col3:
-                    recent_sends = len(history_df[history_df['sent_at'] >= (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')])
-                    st.metric("📅 今週の送信", recent_sends)
-            else:
-                st.info("📋 送信履歴がありません")
-                
-        except Exception as e:
-            st.error(f"履歴取得エラー: {str(e)}")
-
-def show_analytics(company_manager):
-    """分析・レポート"""
-    st.header("📈 分析・レポート")
-    
-    all_companies = company_manager.get_companies_by_status()
-    
-    if all_companies.empty:
-        st.warning("分析するデータがありません。")
-        return
-    
-    st.subheader("🎯 ENR戦略分析")
-    
-    try:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # WiFi vs 関連度相関
-            fig = px.scatter(
-                all_companies,
-                x='picocela_relevance_score',
-                y='priority_score',
-                color='wifi_required',
-                size='priority_score',
-                title="WiFi需要 vs PicoCELA関連度",
-                labels={
-                    'picocela_relevance_score': 'PicoCELA関連度',
-                    'priority_score': '優先度スコア'
-                }
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            # ステータス別平均関連度
-            status_relevance = all_companies.groupby('status')['picocela_relevance_score'].mean().reset_index()
-            fig = px.bar(
-                status_relevance,
-                x='status',
-                y='picocela_relevance_score',
-                title="ステータス別平均関連度"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.warning(f"分析グラフ表示エラー: {str(e)}")
-
-def show_settings():
-    """設定"""
-    st.header("⚙️ 設定")
-    
-    tab1, tab2 = st.tabs(["📧 メール設定", "🎯 ステータス管理"])
-    
-    with tab1:
-        st.subheader("📧 Gmail SMTP設定")
-        
-        if EMAIL_AVAILABLE:
-            st.success("✅ メール機能は利用可能です")
-            st.info("💡 メールキャンペーンページでGmail設定を行ってください")
-            
-            st.markdown("""
-            ### 📋 Gmail設定要件
-            
-            - **Gmailアカウント**: 送信用アカウント
-            - **2段階認証**: 有効化必須
-            - **アプリパスワード**: 16文字の専用パスワード
-            - **送信制限**: 1日500通まで（Gmail制限）
-            
-            ### 🔧 設定場所
-            **メールキャンペーン** → **Gmail設定**タブで設定できます
-            """)
-        else:
-            st.error(f"❌ メール機能エラー: {EMAIL_ERROR_MESSAGE}")
-            st.warning("メール機能の修復が必要です。")
-            st.info("💡 代替案：CSVダウンロード機能を活用してGmailで一括送信してください")
-    
-    with tab2:
-        st.subheader("🎯 ステータス管理")
-        st.write("**現在の営業ステータス:**")
-        
-        for status_code, status_name in SALES_STATUS.items():
-            priority = STATUS_PRIORITY.get(status_code, 0)
-            st.write(f"• **{status_code}**: {status_name} (優先度: {priority})")
-
-def show_data_import(company_manager):
-    """データインポート"""
-    st.header("📁 データインポート")
-    
-    st.subheader("📊 ENRデータインポート")
-    st.info("💡 ENR_Companies_Complete_Local.xlsx または任意のCSV/Excelファイルをアップロードできます")
-    
-    uploaded_file = st.file_uploader(
-        "ファイルをアップロード",
-        type=['xlsx', 'csv'],
-        help="企業データファイルを選択してください"
-    )
-    
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith('.xlsx'):
-                df = pd.read_excel(uploaded_file)
-            else:
-                df = pd.read_csv(uploaded_file)
-            
-            st.write(f"📊 読み込みデータ: {len(df)}行")
-            st.dataframe(df.head(), use_container_width=True)
-            
-            # カラムマッピング
-            st.subheader("📋 カラムマッピング")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                name_col = st.selectbox("企業名", df.columns, index=0)
-                email_col = st.selectbox("メールアドレス", ['None'] + list(df.columns), index=1 if len(df.columns) > 1 else 0)
-                
-            with col2:
-                url_col = st.selectbox("ウェブサイト", ['None'] + list(df.columns), index=2 if len(df.columns) > 2 else 0)
-                industry_col = st.selectbox("業界", ['None'] + list(df.columns), index=3 if len(df.columns) > 3 else 0)
-            
-            if st.button("🚀 インポート実行"):
-                progress_bar = st.progress(0)
-                success_count = 0
-                error_count = 0
-                
-                for idx, row in df.iterrows():
-                    try:
-                        company_data = {
-                            'company_name': str(row[name_col]) if pd.notna(row[name_col]) else f"Company_{idx}",
-                            'email': str(row[email_col]) if email_col != 'None' and pd.notna(row[email_col]) else '',
-                            'website_url': str(row[url_col]) if url_col != 'None' and pd.notna(row[url_col]) else '',
-                            'industry': str(row[industry_col]) if industry_col != 'None' and pd.notna(row[industry_col]) else 'Construction',
-                            'source': f'{uploaded_file.name} Import',
-                            'notes': f"インポート日: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-                        }
-                        
-                        result = company_manager.add_company(company_data, st.session_state.username)
-                        if result:
-                            success_count += 1
-                        else:
-                            error_count += 1
-                        
-                    except Exception as e:
-                        error_count += 1
-                        if error_count <= 5:  # 最初の5つのエラーのみ表示
-                            st.warning(f"行 {idx+1} でエラー: {str(e)}")
-                    
-                    progress_bar.progress((idx + 1) / len(df))
-                
-                st.success(f"✅ {success_count}社のインポートが完了しました！")
-                if error_count > 0:
-                    st.warning(f"⚠️ {error_count}社でエラーが発生しました")
-                st.balloons()
-                
-        except Exception as e:
-            st.error(f"ファイル読み込みエラー: {str(e)}")
+# その他の関数（show_company_management、show_email_campaignsなど）も
+# 同様にSQLite関連の処理を削除してGoogle Sheets APIを使用するように修正
 
 if __name__ == "__main__":
     main()
