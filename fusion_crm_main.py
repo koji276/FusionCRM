@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import json
 import time
 import requests
+import os  # 既存インポートの後に1行追加
 
 # メール関連のインポート
 EMAIL_AVAILABLE = True
@@ -711,6 +712,29 @@ def show_company_management(company_manager):
         else:
             st.info("企業データがありません。まず企業を追加してください。")
 
+def add_email_distribution_link():
+    """メール配信システムへのリンクを追加（最小限）"""
+    st.markdown("---")
+    st.subheader("📧 メール配信システム")
+    
+    gmail_configured = os.path.exists('config/gmail_config.json')
+    
+    if gmail_configured:
+        st.success("✅ Gmail設定済み")
+    else:
+        st.warning("⚠️ Gmail設定が必要です")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🌐 Web版起動"):
+            st.info("ターミナル: streamlit run email_campaign_streamlit.py --server.port 8502")
+    
+    with col2:
+        if st.button("💻 CLI版起動"):
+            st.info("ターミナル: python email_distribution.py")
+
+
 def show_email_campaigns(email_manager, company_manager):
     """メールキャンペーン"""
     st.header("📧 メールキャンペーン")
@@ -1322,6 +1346,8 @@ def main():
                 # 基本的なダッシュボードを表示
                 st.subheader("📊 基本ダッシュボード")
                 st.info("接続に問題がありますが、アプリケーションは利用可能です。")
+
+add_email_distribution_link()  # 既存main()の最後に追加
 
 if __name__ == "__main__":
     main()
