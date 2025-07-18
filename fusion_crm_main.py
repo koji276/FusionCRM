@@ -713,27 +713,57 @@ def show_company_management(company_manager):
             st.info("企業データがありません。まず企業を追加してください。")
 
 def add_email_distribution_link():
-    """メール配信システムへのリンクを追加（最小限）"""
+    """メール配信システムへのリンクボタンを追加（追加のみ）"""
+    
     st.markdown("---")
     st.subheader("📧 メール配信システム")
     
+    # Gmail設定確認
     gmail_configured = os.path.exists('config/gmail_config.json')
     
     if gmail_configured:
-        st.success("✅ Gmail設定済み")
+        st.success("✅ Gmail設定済み - メール配信システム利用可能")
     else:
-        st.warning("⚠️ Gmail設定が必要です")
+        st.warning("⚠️ Gmail設定が必要です（メール配信システムで設定できます）")
     
-    col1, col2 = st.columns(2)
+    # リンクボタン
+    st.markdown("""
+    <a href="http://localhost:8502" target="_blank">
+        <button style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 0;
+        ">
+            🚀 メール配信システムを開く（新しいタブ）
+        </button>
+    </a>
+    """, unsafe_allow_html=True)
     
-    with col1:
-        if st.button("🌐 Web版起動"):
-            st.info("ターミナル: streamlit run email_campaign_streamlit.py --server.port 8502")
-    
-    with col2:
-        if st.button("💻 CLI版起動"):
-            st.info("ターミナル: python email_distribution.py")
-
+    # 使用方法
+    with st.expander("📋 使用方法"):
+        st.markdown("""
+        **事前準備:**
+        1. 別のターミナルで以下を実行してメール配信システムを起動:
+        ```bash
+        streamlit run email_webapp.py --server.port 8502
+        ```
+        
+        **使用手順:**
+        1. 上記ボタンをクリックして新しいタブでメール配信システムを開く
+        2. Gmail設定を行う（初回のみ）
+        3. メール配信を実行
+        
+        **注意:**
+        - メール配信システムは独立したアプリです
+        - ポート8502で動作します
+        - このメインシステムとは別に起動が必要です
+        """)
 
 def show_email_campaigns(email_manager, company_manager):
     """メールキャンペーン"""
@@ -1324,6 +1354,9 @@ def main():
             show_analytics(company_manager)
         elif page == "📁 データインポート":
             show_data_import(company_manager)
+        
+        # メール配信システムリンクを追加
+        add_email_distribution_link()
             
     except Exception as e:
         st.error(f"アプリケーションエラー: {str(e)}")
@@ -1346,8 +1379,6 @@ def main():
                 # 基本的なダッシュボードを表示
                 st.subheader("📊 基本ダッシュボード")
                 st.info("接続に問題がありますが、アプリケーションは利用可能です。")
-
-add_email_distribution_link()  # 既存main()の最後に追加
 
 if __name__ == "__main__":
     main()
