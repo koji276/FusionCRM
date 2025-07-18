@@ -1,6 +1,6 @@
 """
 FusionCRM - PicoCELA営業管理システム（Google Sheets専用版）
-完全にGoogle Sheetsに対応、SQLite削除
+完全版 - 自動接続、拡張ステータス管理対応
 """
 
 import streamlit as st
@@ -12,7 +12,7 @@ import json
 import time
 import requests
 
-# メール関連のインポート（正しい大文字小文字）
+# メール関連のインポート
 EMAIL_AVAILABLE = True
 EMAIL_ERROR_MESSAGE = ""
 
@@ -312,31 +312,62 @@ class EmailCampaignManager:
         }
 
 def get_google_sheets_api():
-    """Google Sheets API取得"""
-    # Streamlit secretsから取得を試みる
+    """Google Sheets API取得（改善版）"""
+    
+    # 優先順位1: Streamlit secrets
     if 'google_apps_script_url' in st.secrets:
         gas_url = st.secrets['google_apps_script_url']
-    # セッション状態から取得
+        try:
+            api = GoogleSheetsAPI(gas_url)
+            # 接続成功時にセッションにも保存
+            st.session_state.gas_url = gas_url
+            return api
+        except Exception as e:
+            st.error(f"Secrets設定のURL接続エラー: {str(e)}")
+    
+    # 優先順位2: セッション状態
     elif 'gas_url' in st.session_state:
         gas_url = st.session_state.gas_url
-    else:
-        gas_url = None
-    
-    if gas_url:
         try:
             return GoogleSheetsAPI(gas_url)
-        except:
-            return None
+        except Exception as e:
+            st.error(f"保存済みURL接続エラー: {str(e)}")
+            # エラー時はセッションから削除
+            del st.session_state.gas_url
     
+    # 優先順位3: 手動設定が必要
     return None
 
 def setup_google_sheets_connection():
-    """Google Sheets接続設定UI"""
+    """Google Sheets接続設定UI（改善版）"""
     st.markdown("## 🚀 Google Sheets接続設定")
-    st.info("Google Apps Script URLを設定してください")
+    
+    # 既存のSecrets設定を確認
+    if 'google_apps_script_url' in st.secrets:
+        st.success("✅ Streamlit Secretsに設定済み")
+        st.info("管理者によってURLが設定されているため、手動設定は不要です。")
+        
+        # テスト接続ボタン
+        if st.button("🔗 接続テスト", type="primary", use_container_width=True):
+            try:
+                api = GoogleSheetsAPI(st.secrets['google_apps_script_url'])
+                st.success("✅ 接続成功！自動的にリダイレクトします...")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ 接続失敗: {str(e)}")
+                st.error("管理者にお問い合わせください。")
+        return
+    
+    # 手動設定UI
+    st.info("初回セットアップ：Google Apps Script URLを設定してください")
+    
+    # 前回の入力値を復元
+    default_url = st.session_state.get('last_attempted_url', '')
     
     gas_url = st.text_input(
         "Google Apps Script URL",
+        value=default_url,
         placeholder="https://script.google.com/macros/s/xxx/exec",
         help="Google Apps Scriptをデプロイして取得したURLを入力"
     )
@@ -346,11 +377,22 @@ def setup_google_sheets_connection():
     with col1:
         if st.button("🔗 接続テスト", type="primary", use_container_width=True):
             if gas_url:
+                # 入力値を保存（失敗時の復元用）
+                st.session_state.last_attempted_url = gas_url
+                
                 try:
                     api = GoogleSheetsAPI(gas_url)
                     st.success("✅ 接続成功！")
+                    
+                    # セッションに保存
                     st.session_state.gas_url = gas_url
-                    time.sleep(1)
+                    
+                    # 永続化の提案
+                    st.info("💡 **管理者向け**: この設定を永続化するには、Streamlit Cloud Secretsに保存してください。")
+                    with st.expander("永続化設定方法"):
+                        st.code(f'google_apps_script_url = "{gas_url}"', language="toml")
+                    
+                    time.sleep(2)
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ 接続失敗: {str(e)}")
@@ -359,15 +401,43 @@ def setup_google_sheets_connection():
     
     with col2:
         if st.button("📖 セットアップガイド", use_container_width=True):
-            st.markdown("""
-            ### 📋 Google Apps Script設定手順
-            1. [Google Apps Script](https://script.google.com/)にアクセス
-            2. 新しいプロジェクトを作成
-            3. 提供されたコードをコピー&ペースト
-            4. デプロイ → 新しいデプロイ
-            5. ウェブアプリとして公開（全員にアクセス許可）
-            6. URLをコピーして上記に貼り付け
-            """)
+            show_setup_guide()
+
+def show_setup_guide():
+    """セットアップガイド表示"""
+    st.markdown("""
+    ### 📋 Google Apps Script設定手順
+    
+    #### 🔧 管理者向け（推奨）
+    1. Google Apps Scriptを設定後、Streamlit Cloud Secretsに保存
+    2. 全ユーザーが自動的に接続できるようになります
+    
+    #### 👤 個人ユーザー向け
+    1. [Google Apps Script](https://script.google.com/)にアクセス
+    2. 新しいプロジェクトを作成
+    3. 提供されたコードをコピー&ペースト
+    4. デプロイ → 新しいデプロイ
+    5. ウェブアプリとして公開（全員にアクセス許可）
+    6. URLをコピーして上記に貼り付け
+    
+    #### 🔒 セキュリティ注意
+    - URLは機密情報として扱ってください
+    - 共有環境では管理者設定を推奨します
+    """)
+
+def show_connection_status():
+    """接続状況表示"""
+    if 'google_apps_script_url' in st.secrets:
+        st.sidebar.success("🔒 管理者設定済み")
+    elif 'gas_url' in st.session_state:
+        st.sidebar.success("✅ 接続済み（セッション）")
+        if st.sidebar.button("🔌 切断"):
+            del st.session_state.gas_url
+            if 'last_attempted_url' in st.session_state:
+                del st.session_state.last_attempted_url
+            st.rerun()
+    else:
+        st.sidebar.warning("⚠️ 未接続")
 
 def show_dashboard(company_manager):
     """ダッシュボード"""
@@ -607,42 +677,50 @@ def main():
         setup_google_sheets_connection()
         return
     
-    # マネージャー初期化
-    company_manager = CompanyManager(api)
-    email_manager = EmailCampaignManager(api)
-    
-    # Google Sheetsリンク表示
-    if 'spreadsheet_url' in st.session_state:
-        st.success(f"✅ Google Sheets接続中 | [📊 スプレッドシートを開く]({st.session_state.spreadsheet_url})")
-    
-    # サイドバー
-    st.sidebar.title("🌟 FusionCRM")
-    st.sidebar.markdown("☁️ **Google Sheets版**")
-    
-    # 接続情報表示
-    if 'gas_url' in st.session_state:
-        st.sidebar.success("✅ 接続済み")
-        if st.sidebar.button("🔌 切断"):
-            del st.session_state.gas_url
+    # 接続成功時の処理
+    try:
+        # マネージャー初期化
+        company_manager = CompanyManager(api)
+        email_manager = EmailCampaignManager(api)
+        
+        # Google Sheetsリンク表示
+        if 'spreadsheet_url' in st.session_state:
+            st.success(f"✅ Google Sheets接続中 | [📊 スプレッドシートを開く]({st.session_state.spreadsheet_url})")
+        
+        # サイドバー
+        st.sidebar.title("🌟 FusionCRM")
+        st.sidebar.markdown("☁️ **Google Sheets版**")
+        
+        # 接続状況表示
+        show_connection_status()
+        
+        page = st.sidebar.selectbox(
+            "📋 メニュー",
+            ["📊 ダッシュボード", "🏢 企業管理", "📧 メールキャンペーン", 
+             "📈 分析・レポート", "📁 データインポート"]
+        )
+        
+        # ページルーティング
+        if page == "📊 ダッシュボード":
+            show_dashboard(company_manager)
+        elif page == "🏢 企業管理":
+            show_company_management(company_manager)
+        elif page == "📧 メールキャンペーン":
+            show_email_campaigns(email_manager, company_manager)
+        elif page == "📈 分析・レポート":
+            show_analytics(company_manager)
+        elif page == "📁 データインポート":
+            show_data_import(company_manager)
+            
+    except Exception as e:
+        st.error(f"アプリケーションエラー: {str(e)}")
+        st.error("Google Sheets接続に問題がある可能性があります。")
+        
+        # エラー時の対処オプション
+        if st.button("🔄 接続をリセット"):
+            if 'gas_url' in st.session_state:
+                del st.session_state.gas_url
             st.rerun()
-    
-    page = st.sidebar.selectbox(
-        "📋 メニュー",
-        ["📊 ダッシュボード", "🏢 企業管理", "📧 メールキャンペーン", 
-         "📈 分析・レポート", "📁 データインポート"]
-    )
-    
-    # ページルーティング
-    if page == "📊 ダッシュボード":
-        show_dashboard(company_manager)
-    elif page == "🏢 企業管理":
-        show_company_management(company_manager)
-    elif page == "📧 メールキャンペーン":
-        show_email_campaigns(email_manager, company_manager)
-    elif page == "📈 分析・レポート":
-        show_analytics(company_manager)
-    elif page == "📁 データインポート":
-        show_data_import(company_manager)
 
 if __name__ == "__main__":
     main()
