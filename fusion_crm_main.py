@@ -67,10 +67,33 @@ class GoogleSheetsAPI:
     def _test_connection(self):
         """接続テスト"""
         try:
-            response = requests.get(f"{self.gas_url}?action=test", timeout=10)
+            # POSTリクエストでテスト
+            response = requests.post(
+                self.gas_url,
+                json={"action": "test"},
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            # レスポンスのデバッグ
+            if response.status_code != 200:
+                raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
+            
+            # レスポンスがJSONか確認
+            content_type = response.headers.get('content-type', '')
+            if 'application/json' not in content_type:
+                raise Exception(f"JSON以外のレスポンス: {content_type}")
+            
             result = response.json()
             if not result.get('success'):
-                raise Exception("Google Apps Script接続エラー")
+                raise Exception(f"Google Apps Script接続エラー: {result.get('error', 'Unknown error')}")
+                
+        except requests.exceptions.RequestException as e:
+            st.error(f"ネットワークエラー: {str(e)}")
+            raise
+        except json.JSONDecodeError as e:
+            st.error(f"JSONデコードエラー: レスポンスが正しいJSON形式ではありません")
+            raise
         except Exception as e:
             st.error(f"接続エラー: {str(e)}")
             raise
