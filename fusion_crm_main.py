@@ -712,8 +712,10 @@ def show_company_management(company_manager):
         else:
             st.info("企業データがありません。まず企業を追加してください。")
 
+# 既存のfusion_crm_main.pyの add_email_distribution_link() 関数を以下に置き換えてください
+
 def add_email_distribution_link():
-    """メール配信システムへのリンクボタンを追加（追加のみ）"""
+    """メール配信システムへのリンクボタンを追加（修正版）"""
     
     st.markdown("---")
     st.subheader("📧 メール配信システム")
@@ -726,9 +728,12 @@ def add_email_distribution_link():
     else:
         st.warning("⚠️ Gmail設定が必要です（メール配信システムで設定できます）")
     
-    # リンクボタン
-    st.markdown("""
-    <a href="http://localhost:8502" target="_blank">
+    # 実際のStreamlit CloudのURLにリンク
+    email_system_url = "https://aiplusagents-4j4kitm3mapdvaxkhi3npk.streamlit.app/"
+    
+    # リンクボタン（修正版）
+    st.markdown(f"""
+    <a href="{email_system_url}" target="_blank">
         <button style="
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -739,31 +744,50 @@ def add_email_distribution_link():
             font-weight: bold;
             cursor: pointer;
             margin: 10px 0;
+            width: 100%;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         ">
             🚀 メール配信システムを開く（新しいタブ）
         </button>
     </a>
     """, unsafe_allow_html=True)
     
-    # 使用方法
+    # または、Streamlitの標準ボタンとlink_buttonを使用する方法
+    st.markdown("**または:**")
+    
+    if st.button("🚀 メール配信システムを開く", type="primary", use_container_width=True):
+        # JavaScriptでウィンドウを開く
+        st.markdown(f"""
+        <script>
+        window.open('{email_system_url}', '_blank');
+        </script>
+        """, unsafe_allow_html=True)
+        
+        # ユーザーに手動で開くよう案内
+        st.info(f"新しいタブでメール配信システムが開きます。開かない場合は以下のリンクをクリックしてください:")
+        st.markdown(f"[📧 メール配信システム]({email_system_url})")
+    
+    # 使用方法（更新版）
     with st.expander("📋 使用方法"):
-        st.markdown("""
-        **事前準備:**
-        1. 別のターミナルで以下を実行してメール配信システムを起動:
-        ```bash
-        streamlit run email_webapp.py --server.port 8502
-        ```
+        st.markdown(f"""
+        **メール配信システム:**
+        - URL: {email_system_url}
+        - 上記ボタンをクリックして新しいタブで開きます
         
         **使用手順:**
-        1. 上記ボタンをクリックして新しいタブでメール配信システムを開く
+        1. 上記ボタンをクリックしてメール配信システムを開く
         2. Gmail設定を行う（初回のみ）
-        3. メール配信を実行
+        3. 企業データを選択してメール配信を実行
         
-        **注意:**
-        - メール配信システムは独立したアプリです
-        - ポート8502で動作します
-        - このメインシステムとは別に起動が必要です
+        **特徴:**
+        - 独立したメール配信アプリケーション
+        - Gmail設定から配信まで完結
+        - このメインシステムとは別に動作
         """)
+
+# 使用方法:
+# 既存のfusion_crm_main.pyの add_email_distribution_link() 関数を
+# 上記のコードに置き換えてください
 
 def show_email_campaigns(email_manager, company_manager):
     """メールキャンペーン"""
