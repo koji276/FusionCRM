@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-独立メール配信Webアプリ
-ファイル名: email_webapp.py
-起動方法: streamlit run email_webapp.py --server.port 8502
+FusionCRM - Streamlit Cloud対応 メール配信システム
+ファイル保存なしでセッション状態のみで動作
 """
 
 import streamlit as st
@@ -27,42 +26,32 @@ st.set_page_config(
 # セッション状態の初期化
 if 'gmail_config' not in st.session_state:
     st.session_state.gmail_config = None
+if 'setup_completed' not in st.session_state:
+    st.session_state.setup_completed = False
 
-class EmailWebApp:
-    """独立メール配信Webアプリケーション"""
+class StreamlitEmailWebApp:
+    """Streamlit Cloud対応メール配信Webアプリケーション"""
     
     def __init__(self):
-        self.config_path = "config"
-        self.ensure_config_dir()
-        self.load_gmail_config()
+        # ファイルシステムを使わずセッション状態のみで動作
+        pass
     
-    def ensure_config_dir(self):
-        if not os.path.exists(self.config_path):
-            os.makedirs(self.config_path)
+    def is_gmail_configured(self):
+        """Gmail設定状況確認（セッション状態ベース）"""
+        return st.session_state.gmail_config is not None and st.session_state.setup_completed
     
-    def load_gmail_config(self):
+    def save_gmail_config_to_session(self, config):
+        """Gmail設定をセッション状態に保存"""
         try:
-            config_file = os.path.join(self.config_path, "gmail_config.json")
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                st.session_state.gmail_config = config
-                return config
-        except:
-            st.session_state.gmail_config = None
-            return None
-    
-    def save_gmail_config(self, config):
-        try:
-            config_file = os.path.join(self.config_path, "gmail_config.json")
-            with open(config_file, 'w', encoding='utf-8') as f:
-                json.dump(config, f, ensure_ascii=False, indent=2)
             st.session_state.gmail_config = config
+            st.session_state.setup_completed = True
             return True
         except Exception as e:
             st.error(f"設定保存エラー: {e}")
             return False
     
     def test_gmail_connection(self, config):
+        """Gmail接続テスト"""
         try:
             server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
             server.starttls()
@@ -73,7 +62,8 @@ class EmailWebApp:
             return False, f"接続エラー: {str(e)}"
     
     def send_email(self, to_email, company_name, subject, body):
-        if not st.session_state.gmail_config:
+        """メール送信"""
+        if not self.is_gmail_configured():
             return False, "Gmail設定が無効です"
         
         try:
@@ -84,6 +74,7 @@ class EmailWebApp:
             msg['To'] = to_email
             msg['Subject'] = subject
             
+            # 会社名の置換
             formatted_body = body.replace('{company_name}', company_name)
             msg.attach(MIMEText(formatted_body, 'plain', 'utf-8'))
             
@@ -101,22 +92,45 @@ class EmailWebApp:
             return False, f"送信エラー: {str(e)}"
 
 def get_companies_data():
-    """企業データ取得"""
-    try:
-        conn = sqlite3.connect('fusion_crm.db')
-        query = """
-            SELECT id, company_name, email_address, website, phone, status, 
-                   picocela_relevance_score
-            FROM companies 
-            WHERE email_address IS NOT NULL AND email_address != ''
-            ORDER BY picocela_relevance_score DESC
-        """
-        df = pd.read_sql_query(query, conn)
-        conn.close()
-        return df
-    except Exception as e:
-        st.error(f"企業データ取得エラー: {e}")
-        return pd.DataFrame()
+    """企業データ取得（サンプルデータ使用）"""
+    # Streamlit Cloudでは外部データベースにアクセスできないため、サンプルデータを使用
+    sample_data = {
+        'id': [1, 2, 3, 4, 5, 6, 7, 8],
+        'company_name': [
+            'テストコンストラクション株式会社',
+            'スマートビルディング合同会社', 
+            'Wyebot',
+            'Delta Electronics (Americas)',
+            'Energous Corporation',
+            'Lyngsoe Systems',
+            'Corvus Robotics, Inc.',
+            'Interlake Mecalux Inc.'
+        ],
+        'email_address': [
+            'contact@test-construction.com',
+            'info@smart-building.co.jp',
+            'contact@wyebot.com',
+            'contact@delta-americas.com',
+            'contact@energous.com',
+            'contact@lyngsoe.com',
+            'contact@corvusrobotics.com',
+            'contact@mecalux.com'
+        ],
+        'website': [
+            'https://test-construction.com',
+            'https://smart-building.co.jp',
+            'https://wyebot.com',
+            'https://delta-americas.com',
+            'https://energous.com',
+            'https://lyngsoe.com',
+            'https://corvusrobotics.com',
+            'https://mecalux.com'
+        ],
+        'status': ['New', 'New', 'New', 'New', 'New', 'New', 'New', 'New'],
+        'picocela_relevance_score': [115, 120, 100, 20, 110, 80, 20, 90]
+    }
+    
+    return pd.DataFrame(sample_data)
 
 def render_header():
     """ヘッダー"""
@@ -124,16 +138,16 @@ def render_header():
     st.markdown("**独立メール配信アプリケーション**")
     
     # メインシステムへのリンク
-    st.info("🔗 [メインシステムに戻る](http://localhost:8501) （別タブで開く）")
+    st.info("🔗 [メインシステムに戻る](https://aiplusagents-4j4kitm3mapdvaxkhi3npk.streamlit.app/) （別タブで開く）")
 
 def render_gmail_setup():
     """Gmail設定"""
     st.header("⚙️ Gmail設定")
     
-    app = EmailWebApp()
+    app = StreamlitEmailWebApp()
     
     # 現在の設定表示
-    if st.session_state.gmail_config:
+    if app.is_gmail_configured():
         st.success("✅ Gmail設定済み")
         config = st.session_state.gmail_config
         col1, col2 = st.columns(2)
@@ -141,6 +155,12 @@ def render_gmail_setup():
             st.info(f"**メール**: {config['email']}")
         with col2:
             st.info(f"**送信者名**: {config['sender_name']}")
+        
+        # 設定クリア
+        if st.button("🔄 設定をクリア"):
+            st.session_state.gmail_config = None
+            st.session_state.setup_completed = False
+            st.rerun()
     else:
         st.error("❌ Gmail設定が必要です")
     
@@ -157,48 +177,48 @@ def render_gmail_setup():
         with st.form("gmail_setup"):
             email = st.text_input(
                 "Gmailアドレス", 
-                value=st.session_state.gmail_config['email'] if st.session_state.gmail_config else "tokuda@picocela.com"
+                value=st.session_state.gmail_config['email'] if app.is_gmail_configured() else "tokuda@picocela.com"
             )
             password = st.text_input("アプリパスワード", type="password")
             sender_name = st.text_input(
                 "送信者名", 
-                value=st.session_state.gmail_config['sender_name'] if st.session_state.gmail_config else "PicoCELA Inc."
+                value=st.session_state.gmail_config['sender_name'] if app.is_gmail_configured() else "PicoCELA Inc."
             )
             
             if st.form_submit_button("💾 設定保存"):
-                config = {
-                    "email": email,
-                    "password": password,
-                    "sender_name": sender_name,
-                    "smtp_server": "smtp.gmail.com",
-                    "smtp_port": 587
-                }
-                
-                with st.spinner("接続テスト中..."):
-                    success, message = app.test_gmail_connection(config)
-                
-                if success:
-                    app.save_gmail_config(config)
-                    st.success("✅ 設定保存完了")
-                    st.rerun()
+                if email and password and sender_name:
+                    config = {
+                        "email": email,
+                        "password": password,
+                        "sender_name": sender_name,
+                        "smtp_server": "smtp.gmail.com",
+                        "smtp_port": 587
+                    }
+                    
+                    with st.spinner("接続テスト中..."):
+                        success, message = app.test_gmail_connection(config)
+                    
+                    if success:
+                        app.save_gmail_config_to_session(config)
+                        st.success("✅ 設定保存完了")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {message}")
                 else:
-                    st.error(f"❌ {message}")
+                    st.error("すべての項目を入力してください")
 
 def render_email_campaign():
     """メール配信"""
     st.header("📧 メール配信")
     
-    if not st.session_state.gmail_config:
+    app = StreamlitEmailWebApp()
+    
+    if not app.is_gmail_configured():
         st.error("❌ Gmail設定が必要です。上記で設定してください。")
         return
     
-    app = EmailWebApp()
-    
     # 企業データ取得
     df = get_companies_data()
-    if df.empty:
-        st.warning("配信対象企業が見つかりません")
-        return
     
     # 配信設定
     st.subheader("🎯 配信対象")
@@ -209,7 +229,7 @@ def render_email_campaign():
     with col2:
         min_score = st.number_input("最小スコア", min_value=0, value=0)
     with col3:
-        max_count = st.number_input("最大送信数", min_value=1, max_value=50, value=10)
+        max_count = st.number_input("最大送信数", min_value=1, max_value=50, value=5)
     
     # フィルター適用
     filtered_df = df.copy()
@@ -294,9 +314,10 @@ def render_email_campaign():
                         
                         if success:
                             success_count += 1
+                            st.success(f"✅ {company_name} - 送信成功")
                         else:
                             failed_count += 1
-                            st.error(f"{company_name}: {message}")
+                            st.error(f"❌ {company_name}: {message}")
                         
                         progress_bar.progress((i + 1) / len(filtered_df))
                         
@@ -326,6 +347,10 @@ def main():
     
     # メール配信
     render_email_campaign()
+    
+    # フッター
+    st.markdown("---")
+    st.markdown("**💡 注意**: この設定はセッション中のみ有効です。ブラウザを閉じると設定がリセットされます。")
 
 if __name__ == "__main__":
     main()
