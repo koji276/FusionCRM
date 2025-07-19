@@ -742,21 +742,92 @@ def generate_japanese_emails_individual(companies_data: List[Dict], template_typ
     
     return summary
 
-# ===== 瞬時送信システム =====
-def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict, 
-                            max_emails: int = 50, language: str = 'english',
-                            template_type: str = 'standard') -> Dict:
-    """事前生成メールの瞬時送信 - company_nameベース検索に修正"""
+# ===== 重複なし再開機能付き送信システム =====
+def get_already_sent_companies(db: IntegratedEmailDatabase, language: str, template_type: str) -> List[str]:
+    """送信済み企業名リストを取得"""
+    conn = sqlite3.connect(db.db_path)
+    cursor = conn.cursor()
+    
+    # 成功送信済みの企業名を取得
+    cursor.execute("""
+        SELECT DISTINCT company_name 
+        FROM integrated_send_history 
+        WHERE language = ? AND template_type = ? AND status = 'success'
+        AND DATE(sent_at) = DATE('now')
+    """, (language, template_type))
+    
+    sent_companies = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    
+    return sent_companies
+
+def send_email_smtp_with_retry(to_email: str, subject: str, body: str, gmail_config: Dict, max_retries: int = 3) -> bool:
+    """リトライ機能付きメール送信"""
+    for attempt in range(max_retries):
+        try:
+            # SMTP設定
+            smtp_server = "smtp.gmail.com"
+            smtp_port = 587
+            
+            # MIMEメッセージ作成
+            msg = MIMEMultipart()
+            msg['From'] = f"{gmail_config['sender_name']} <{gmail_config['email']}>"
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            
+            # 本文添付
+            msg.attach(MIMEText(body, 'plain', 'utf-8'))
+            
+            # SMTP接続・送信
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            server.login(gmail_config['email'], gmail_config['password'])
+            server.send_message(msg)
+            server.quit()
+            
+            return True
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(30)  # 30秒待機してリトライ
+                continue
+            else:
+                raise e
+    
+    return False
+
+def send_pregenerated_emails_with_resume(company_list: List[Dict], gmail_config: Dict, 
+                                        max_emails: int = 50, language: str = 'english',
+                                        template_type: str = 'standard', send_interval: int = 60,
+                                        resume_mode: bool = False) -> Dict:
+    """重複なし再開機能付き瞬時送信"""
     db = IntegratedEmailDatabase()
     
-    st.write(f"📤 事前生成{language}メールの送信開始 (最大{max_emails}社)")
+    # 送信済み企業を除外
+    if resume_mode:
+        already_sent = get_already_sent_companies(db, language, template_type)
+        remaining_companies = [c for c in company_list if c.get('company_name') not in already_sent]
+        st.info(f"📧 送信済み: {len(already_sent)}社 | 残り: {len(remaining_companies)}社")
+    else:
+        remaining_companies = company_list
+        already_sent = []
+    
+    target_companies = remaining_companies[:max_emails]
+    
+    if not target_companies:
+        st.success("✅ 全企業への送信が完了しています！")
+        return {'all_completed': True}
+    
+    st.write(f"📤 {'再開' if resume_mode else '開始'}: {len(target_companies)}社への送信")
     
     sent_count = 0
     failed_count = 0
-    target_companies = company_list[:max_emails]
     
     progress_bar = st.progress(0)
     status_text = st.empty()
+    time_remaining_text = st.empty()
+    
+    start_time = time.time()
     
     for i, company in enumerate(target_companies):
         # 進捗更新
@@ -764,18 +835,35 @@ def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict,
         progress_bar.progress(progress)
         status_text.text(f"送信中: {company.get('company_name', 'Unknown')} ({i+1}/{len(target_companies)})")
         
-        # データベースからメール取得 - company_nameベース検索に修正
+        # 残り時間表示
+        if i > 0:
+            elapsed = time.time() - start_time
+            estimated_total = elapsed / i * len(target_companies)
+            remaining = estimated_total - elapsed
+            time_remaining_text.text(f"⏱️ 残り時間: {remaining/60:.1f}分")
+        
+        # 送信前に再度確認（他のプロセスで送信済みの場合）
         company_name = company.get('company_name')
+        if company_name in get_already_sent_companies(db, language, template_type):
+            st.info(f"⚠️ {company_name} - 既に送信済みのためスキップ")
+            continue
+        
+        # データベースからメール取得
         stored_email = db.get_generated_email(company_name, language, template_type)
         
         if stored_email:
             try:
-                # 瞬時送信
-                success = send_email_smtp(
+                # Gmail制限対策: より長い間隔
+                if i > 0:
+                    time.sleep(send_interval)
+                
+                # 送信実行（リトライ機能付き）
+                success = send_email_smtp_with_retry(
                     to_email=company.get('email'),
                     subject=stored_email['subject'],
                     body=stored_email['email_body'],
-                    gmail_config=gmail_config
+                    gmail_config=gmail_config,
+                    max_retries=3
                 )
                 
                 # 送信履歴保存
@@ -800,7 +888,13 @@ def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict,
                     
             except Exception as e:
                 failed_count += 1
-                st.error(f"❌ {company.get('company_name')} - エラー: {str(e)[:30]}")
+                error_msg = str(e)
+                st.error(f"❌ {company.get('company_name')} - エラー: {error_msg[:50]}")
+                
+                # Gmail制限検知
+                if "quota" in error_msg.lower() or "limit" in error_msg.lower() or "authentication" in error_msg.lower():
+                    st.error("🚫 Gmail送信制限に達しました。24時間後に再開してください。")
+                    break
                 
                 # エラー履歴保存
                 send_record = {
@@ -810,29 +904,49 @@ def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict,
                     'language': language,
                     'subject': stored_email.get('subject', 'Unknown'),
                     'status': 'error',
-                    'smtp_response': str(e)[:100],
+                    'smtp_response': error_msg[:100],
                     'template_type': template_type
                 }
                 db.save_send_history(send_record)
         else:
             failed_count += 1
             st.warning(f"⚠️ {company.get('company_name')} - 事前生成メールなし")
-        
-        # 送信間隔（調整可能）
-        if i < len(target_companies) - 1:
-            time.sleep(60)  # 60秒間隔
+    
+    # 完了処理
+    total_time = time.time() - start_time
+    total_sent_today = len(already_sent) + sent_count
     
     summary = {
         'total_attempted': len(target_companies),
         'successful_sends': sent_count,
         'failed_sends': failed_count,
-        'success_rate': (sent_count / len(target_companies)) * 100 if target_companies else 0
+        'total_sent_today': total_sent_today,
+        'success_rate': (sent_count / len(target_companies)) * 100 if target_companies else 0,
+        'total_time_minutes': total_time / 60,
+        'remaining_companies': len(remaining_companies) - len(target_companies)
     }
     
-    st.write(f"### 📊 送信完了")
-    st.write(f"**成功**: {sent_count}/{len(target_companies)} ({summary['success_rate']:.1f}%)")
+    st.success(f"🎉 送信{'再開' if resume_mode else ''}完了！")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("今回送信", f"{sent_count}通")
+    with col2:
+        st.metric("本日総送信", f"{total_sent_today}通")
+    with col3:
+        st.metric("成功率", f"{summary['success_rate']:.1f}%")
+    with col4:
+        st.metric("残り企業", f"{summary['remaining_companies']}社")
     
     return summary
+
+# ===== 互換性のための旧関数 =====
+def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict, 
+                            max_emails: int = 50, language: str = 'english',
+                            template_type: str = 'standard') -> Dict:
+    """旧バージョン互換性のための関数"""
+    return send_pregenerated_emails_with_resume(
+        company_list, gmail_config, max_emails, language, template_type, 60, False
+    )
 
 # ===== 企業データ取得（Google Sheets連携） =====
 def get_companies_from_sheets() -> List[Dict]:
@@ -1406,7 +1520,51 @@ def main():
         st.subheader("📤 事前生成メール瞬時送信")
         
         if gmail_config:
+            # 送信状況確認
+            db = IntegratedEmailDatabase()
+            conn = sqlite3.connect(db.db_path)
+            
+            # 本日の送信統計
+            today_stats_query = """
+                SELECT 
+                    language,
+                    template_type,
+                    COUNT(*) as sent_count
+                FROM integrated_send_history 
+                WHERE DATE(sent_at) = DATE('now') AND status = 'success'
+                GROUP BY language, template_type
+            """
+            
+            today_stats = pd.read_sql_query(today_stats_query, conn)
+            
+            # 送信状況表示
+            if not today_stats.empty:
+                st.subheader("📊 本日の送信状況")
+                for _, row in today_stats.iterrows():
+                    st.info(f"✅ {row['language']}/{row['template_type']}: {row['sent_count']}通送信済み")
+            
+            # 新規送信 vs 再開送信
+            st.subheader("🚀 送信モード選択")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**🆕 新規送信開始**")
+                if st.button("新規送信設定", key="new_send"):
+                    st.session_state['send_mode'] = 'new'
+            
+            with col2:
+                st.write("**🔄 送信再開**")
+                if st.button("再開設定", key="resume_send"):
+                    st.session_state['send_mode'] = 'resume'
+            
+            # デフォルト設定
+            if 'send_mode' not in st.session_state:
+                st.session_state['send_mode'] = 'new'
+            
             # 送信設定
+            st.subheader(f"⚙️ {'再開' if st.session_state['send_mode'] == 'resume' else '新規'}送信設定")
+            
             col1, col2, col3 = st.columns(3)
             with col1:
                 max_sends = st.number_input("最大送信数", min_value=1, max_value=100, value=20)
@@ -1415,13 +1573,17 @@ def main():
             with col3:
                 send_template = st.selectbox("テンプレート", ["standard", "partnership", "introduction", "follow_up"], key="send_template")
             
-            # 送信間隔設定
-            send_interval = st.slider("送信間隔（秒）", min_value=30, max_value=300, value=60)
+            # 送信間隔設定（Gmail制限対策）
+            st.subheader("⏱️ 送信制限対策")
+            col1, col2 = st.columns(2)
+            with col1:
+                send_interval = st.slider("送信間隔（秒）", min_value=60, max_value=300, value=120, 
+                                        help="Gmail制限対策のため60秒以上推奨")
+            with col2:
+                max_daily_sends = st.number_input("1日最大送信数", min_value=50, max_value=500, value=200,
+                                                help="Gmailアカウント制限に応じて調整")
             
-            # 送信可能メール数確認
-            db = IntegratedEmailDatabase()
-            conn = sqlite3.connect(db.db_path)
-            
+            # 送信可能数確認
             try:
                 available_query = f"""
                     SELECT COUNT(*) as count 
@@ -1431,41 +1593,108 @@ def main():
                 available_df = pd.read_sql_query(available_query, conn)
                 available_count = available_df.iloc[0]['count'] if not available_df.empty else 0
                 
-                st.info(f"📬 送信可能メール数: {available_count}通 ({send_language} / {send_template})")
+                # 今日の送信数確認
+                daily_sent_query = f"""
+                    SELECT COUNT(*) as count 
+                    FROM integrated_send_history 
+                    WHERE DATE(sent_at) = DATE('now') AND status = 'success'
+                """
+                daily_sent_df = pd.read_sql_query(daily_sent_query, conn)
+                daily_sent = daily_sent_df.iloc[0]['count'] if not daily_sent_df.empty else 0
                 
-                if available_count > 0:
-                    estimated_send_time = max_sends * (send_interval + 10) / 60  # 送信間隔 + 処理時間
-                    st.write(f"⏱️ 予想送信時間: {estimated_send_time:.1f}分")
-                    
-                    # 送信プレビュー
-                    with st.expander("👀 送信対象プレビュー"):
-                        companies_data = get_companies_from_sheets()
-                        if companies_data:
-                            preview_companies = companies_data[:min(max_sends, 5)]
-                            for company in preview_companies:
-                                st.write(f"• {company['company_name']} ({company['email']})")
-                            if len(companies_data) > 5:
-                                st.write(f"... 他 {len(companies_data)-5}社")
-                    
-                    # 送信確認
-                    confirm_send = st.checkbox("📤 送信内容を確認しました")
-                    
-                    if confirm_send and st.button("🚀 瞬時送信開始", type="primary"):
+                # 残り送信可能数
+                remaining_daily = max_daily_sends - daily_sent
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("生成済みメール", f"{available_count}通")
+                with col2:
+                    st.metric("本日送信済み", f"{daily_sent}通")
+                with col3:
+                    st.metric("本日残り可能", f"{remaining_daily}通")
+                
+                if remaining_daily <= 0:
+                    st.error("🚫 本日の送信制限に達しています。明日再開してください。")
+                else:
+                    if available_count > 0:
+                        # 送信対象企業の確認
                         companies_data = get_companies_from_sheets()
                         
-                        if companies_data:
-                            # 送信間隔を動的に設定
-                            summary = send_pregenerated_emails_with_interval(
-                                companies_data, gmail_config, max_sends, send_language, send_template, send_interval
-                            )
-                            st.session_state['last_send_summary'] = summary
+                        if st.session_state['send_mode'] == 'resume':
+                            # 再開モード: 送信済み企業を除外
+                            already_sent = get_already_sent_companies(db, send_language, send_template)
+                            remaining_companies = [c for c in companies_data if c.get('company_name') not in already_sent]
+                            
+                            st.info(f"📧 送信済み: {len(already_sent)}社 | 未送信: {len(remaining_companies)}社")
+                            
+                            if not remaining_companies:
+                                st.success("✅ 全企業への送信が完了しています！")
+                            else:
+                                target_count = min(max_sends, len(remaining_companies), remaining_daily)
+                                estimated_time = target_count * (send_interval + 10) / 60
+                                
+                                st.write(f"⏱️ 予想送信時間: {estimated_time:.1f}分 ({target_count}社)")
+                                
+                                # 送信プレビュー
+                                with st.expander("👀 再開送信対象プレビュー"):
+                                    preview_companies = remaining_companies[:min(target_count, 5)]
+                                    for company in preview_companies:
+                                        st.write(f"• {company['company_name']} ({company['email']})")
+                                    if len(remaining_companies) > 5:
+                                        st.write(f"... 他 {len(remaining_companies)-5}社")
+                                
+                                # 送信確認
+                                st.subheader("✅ 送信確認")
+                                confirm_send = st.checkbox("📤 送信内容を確認し、Gmail制限を理解しました")
+                                
+                                if confirm_send and st.button("🔄 送信再開", type="primary"):
+                                    summary = send_pregenerated_emails_with_resume(
+                                        companies_data, 
+                                        gmail_config, 
+                                        max_sends, 
+                                        send_language, 
+                                        send_template, 
+                                        send_interval,
+                                        resume_mode=True
+                                    )
+                                    st.session_state['last_send_summary'] = summary
+                                elif not confirm_send:
+                                    st.warning("⚠️ 送信確認チェックボックスをチェックしてください")
                         else:
-                            st.error("❌ 企業データが取得できませんでした")
-                    elif not confirm_send:
-                        st.warning("⚠️ 送信確認チェックボックスをチェックしてください")
-                else:
-                    st.warning(f"⚠️ {send_language}/{send_template}メールが生成されていません。まず生成してください。")
-                    
+                            # 新規モード
+                            target_count = min(max_sends, len(companies_data), remaining_daily)
+                            estimated_time = target_count * (send_interval + 10) / 60
+                            
+                            st.write(f"⏱️ 予想送信時間: {estimated_time:.1f}分 ({target_count}社)")
+                            
+                            # 送信プレビュー
+                            with st.expander("👀 送信対象プレビュー"):
+                                preview_companies = companies_data[:min(target_count, 5)]
+                                for company in preview_companies:
+                                    st.write(f"• {company['company_name']} ({company['email']})")
+                                if len(companies_data) > 5:
+                                    st.write(f"... 他 {len(companies_data)-5}社")
+                            
+                            # 送信確認
+                            st.subheader("✅ 送信確認")
+                            confirm_send = st.checkbox("📤 送信内容を確認し、Gmail制限を理解しました")
+                            
+                            if confirm_send and st.button("🚀 瞬時送信開始", type="primary"):
+                                summary = send_pregenerated_emails_with_resume(
+                                    companies_data, 
+                                    gmail_config, 
+                                    max_sends, 
+                                    send_language, 
+                                    send_template, 
+                                    send_interval,
+                                    resume_mode=False
+                                )
+                                st.session_state['last_send_summary'] = summary
+                            elif not confirm_send:
+                                st.warning("⚠️ 送信確認チェックボックスをチェックしてください")
+                    else:
+                        st.warning(f"⚠️ {send_language}/{send_template}メールが生成されていません。まず生成してください。")
+                        
             except Exception as e:
                 st.error(f"❌ 送信可能数確認エラー: {str(e)}")
             finally:
@@ -1480,6 +1709,12 @@ def main():
                 st.write("2. アプリパスワードを生成")
                 st.write("3. サイドバーにGmailアドレスとアプリパスワードを入力")
                 st.write("4. 設定完了後、送信機能が利用可能になります")
+                
+                st.write("**Gmail制限について:**")
+                st.write("- 通常アカウント: 500通/日")
+                st.write("- G Suite: 2000通/日")
+                st.write("- 推奨送信間隔: 120秒")
+                st.write("- 制限に達した場合: 24時間待機が必要")
     
     with tab5:
         render_send_history()
@@ -1606,117 +1841,14 @@ def main():
                 finally:
                     conn.close()
 
-# ===== 送信間隔カスタマイズ対応 =====
+# ===== 送信間隔カスタマイズ対応（旧バージョン互換性） =====
 def send_pregenerated_emails_with_interval(company_list: List[Dict], gmail_config: Dict, 
                                           max_emails: int = 50, language: str = 'english',
                                           template_type: str = 'standard', send_interval: int = 60) -> Dict:
-    """事前生成メールの瞬時送信（送信間隔カスタマイズ対応） - company_nameベース検索に修正"""
-    db = IntegratedEmailDatabase()
-    
-    st.write(f"📤 事前生成{language}メールの送信開始 (間隔: {send_interval}秒)")
-    
-    sent_count = 0
-    failed_count = 0
-    target_companies = company_list[:max_emails]
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    time_remaining_text = st.empty()
-    
-    start_time = time.time()
-    
-    for i, company in enumerate(target_companies):
-        # 進捗更新
-        progress = (i + 1) / len(target_companies)
-        progress_bar.progress(progress)
-        status_text.text(f"送信中: {company.get('company_name', 'Unknown')} ({i+1}/{len(target_companies)})")
-        
-        # 残り時間表示
-        if i > 0:
-            elapsed = time.time() - start_time
-            estimated_total = elapsed / i * len(target_companies)
-            remaining = estimated_total - elapsed
-            time_remaining_text.text(f"⏱️ 残り時間: {remaining/60:.1f}分")
-        
-        # データベースからメール取得 - company_nameベース検索に修正
-        company_name = company.get('company_name')
-        stored_email = db.get_generated_email(company_name, language, template_type)
-        
-        if stored_email:
-            try:
-                # 送信実行
-                success = send_email_smtp(
-                    to_email=company.get('email'),
-                    subject=stored_email['subject'],
-                    body=stored_email['email_body'],
-                    gmail_config=gmail_config
-                )
-                
-                # 送信履歴保存
-                send_record = {
-                    'company_id': company.get('company_id', ''),
-                    'company_name': company_name,
-                    'recipient_email': company.get('email'),
-                    'language': language,
-                    'subject': stored_email['subject'],
-                    'status': 'success' if success else 'failed',
-                    'smtp_response': 'OK' if success else 'SMTP Error',
-                    'template_type': template_type
-                }
-                db.save_send_history(send_record)
-                
-                if success:
-                    sent_count += 1
-                    st.success(f"✅ {company.get('company_name')} - 送信成功")
-                else:
-                    failed_count += 1
-                    st.error(f"❌ {company.get('company_name')} - 送信失敗")
-                    
-            except Exception as e:
-                failed_count += 1
-                st.error(f"❌ {company.get('company_name')} - エラー: {str(e)[:30]}")
-                
-                # エラー履歴保存
-                send_record = {
-                    'company_id': company.get('company_id', ''),
-                    'company_name': company_name,
-                    'recipient_email': company.get('email'),
-                    'language': language,
-                    'subject': stored_email.get('subject', 'Unknown'),
-                    'status': 'error',
-                    'smtp_response': str(e)[:100],
-                    'template_type': template_type
-                }
-                db.save_send_history(send_record)
-        else:
-            failed_count += 1
-            st.warning(f"⚠️ {company.get('company_name')} - 事前生成メールなし")
-        
-        # カスタム送信間隔
-        if i < len(target_companies) - 1:
-            time.sleep(send_interval)
-    
-    # 完了処理
-    total_time = time.time() - start_time
-    
-    summary = {
-        'total_attempted': len(target_companies),
-        'successful_sends': sent_count,
-        'failed_sends': failed_count,
-        'success_rate': (sent_count / len(target_companies)) * 100 if target_companies else 0,
-        'total_time_minutes': total_time / 60
-    }
-    
-    st.success(f"🎉 送信完了！")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("成功送信", f"{sent_count}通")
-    with col2:
-        st.metric("失敗", f"{failed_count}通")
-    with col3:
-        st.metric("成功率", f"{summary['success_rate']:.1f}%")
-    
-    return summary
+    """旧バージョン互換性のための関数 - 新しい再開機能にリダイレクト"""
+    return send_pregenerated_emails_with_resume(
+        company_list, gmail_config, max_emails, language, template_type, send_interval, False
+    )
 
 if __name__ == "__main__":
     main()
