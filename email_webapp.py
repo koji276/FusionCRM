@@ -116,11 +116,11 @@ def get_companies_data():
     
     # 1. Google Sheets から直接データを取得
     try:
-        # FusionCRM Database のGoogle Sheets URL
-        sheets_url = "https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdk_xr_7WNY"
+        # FusionCRM Database のGoogle Sheets URL（修正版）
+        sheets_url = "https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdK_xr_7WNY"
         
         # CSVエクスポート用のURL（公開されている場合）
-        csv_export_url = f"{sheets_url}/export?format=csv&gid=0"
+        csv_export_url = f"{sheets_url}/export?format=csv&gid=580124806"
         
         st.info(f"🔗 Google Sheets 接続試行: {sheets_url}")
         
@@ -265,7 +265,7 @@ def get_companies_data():
         
         sheets_url_input = st.text_input(
             "Google Sheets URL", 
-            value="https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdk_xr_7WNY",
+            value="https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdK_xr_7WNY",
             help="FusionCRMで使用されているGoogle SheetsのURL"
         )
         
