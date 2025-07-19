@@ -250,7 +250,103 @@ def get_companies_data():
         st.dataframe(df)
         return df
     
-    # 5. Google Sheets URL の設定オプション
+    # 5. CSVデータ直接入力オプション
+    st.write("---")
+    st.subheader("📄 CSVデータ直接入力")
+    st.info("💡 Google SheetsからコピーしたCSVデータを直接貼り付けてください")
+    
+    with st.expander("📋 CSVデータを貼り付け"):
+        st.markdown("""
+        **手順:**
+        1. Google Sheets を開く
+        2. 全データを選択してコピー (Ctrl+A → Ctrl+C)
+        3. 下のテキストエリアに貼り付け (Ctrl+V)
+        4. 「データを読み込み」をクリック
+        """)
+        
+        csv_text = st.text_area(
+            "CSVデータを貼り付け",
+            height=200,
+            placeholder="company_id,company_name,contact_name,email,phone,website,description...\nENR_17528887,FUSIONDRIVER,,koji@fusiondriver.biz,..."
+        )
+        
+        if st.button("📊 データを読み込み"):
+            if csv_text.strip():
+                try:
+                    from io import StringIO
+                    csv_data = StringIO(csv_text)
+                    df = pd.read_csv(csv_data)
+                    
+                    st.success(f"✅ CSVデータ読み込み成功: {len(df)}行")
+                    st.info(f"📋 検出された列: {list(df.columns)}")
+                    
+                    # データのプレビュー
+                    st.write("📊 データプレビュー:")
+                    st.dataframe(df.head())
+                    
+                    # 列名を標準化
+                    column_mapping = {}
+                    for col in df.columns:
+                        col_lower = col.lower()
+                        if any(keyword in col_lower for keyword in ['company_name', 'name']) and 'contact' not in col_lower:
+                            column_mapping[col] = 'company_name'
+                        elif 'email' in col_lower and 'contact' not in col_lower:
+                            column_mapping[col] = 'email_address'
+                        elif any(keyword in col_lower for keyword in ['picocela_rele', 'priority']):
+                            column_mapping[col] = 'picocela_relevance_score'
+                    
+                    # 必要な列が存在するかチェック
+                    name_col = None
+                    email_col = None
+                    
+                    for original, mapped in column_mapping.items():
+                        if mapped == 'company_name':
+                            name_col = original
+                        elif mapped == 'email_address':
+                            email_col = original
+                    
+                    if not name_col:
+                        name_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]  # company_name は通常2列目
+                    if not email_col:
+                        # email列を探す
+                        for col in df.columns:
+                            if 'email' in col.lower():
+                                email_col = col
+                                break
+                    
+                    if name_col and email_col:
+                        # データをクリーニング
+                        df_clean = df[[name_col, email_col]].copy()
+                        df_clean.columns = ['company_name', 'email_address']
+                        df_clean['status'] = 'New'
+                        df_clean['picocela_relevance_score'] = 50
+                        
+                        # 有効なデータのみフィルタ
+                        df_clean = df_clean[df_clean['email_address'].notna()]
+                        df_clean = df_clean[df_clean['email_address'].str.contains('@', na=False)]
+                        df_clean = df_clean[df_clean['company_name'].notna()]
+                        
+                        # セッション状態に保存
+                        st.session_state['csv_companies'] = df_clean.to_dict('records')
+                        
+                        st.success(f"📧 有効なメールアドレス: {len(df_clean)}件")
+                        st.write("📊 処理済みデータ:")
+                        st.dataframe(df_clean)
+                        
+                        return df_clean
+                    else:
+                        st.error(f"❌ 必要な列が見つかりません。会社名列: {name_col}, メール列: {email_col}")
+                        
+                except Exception as e:
+                    st.error(f"❌ CSV読み込みエラー: {e}")
+            else:
+                st.error("❌ CSVデータを入力してください")
+    
+    # 6. CSV入力データを返す
+    if 'csv_companies' in st.session_state and st.session_state.csv_companies:
+        df = pd.DataFrame(st.session_state.csv_companies)
+        st.success(f"✅ CSV入力データを使用: {len(df)}社")
+        return df
     st.write("---")
     st.subheader("🔗 Google Sheets URL 設定")
     
