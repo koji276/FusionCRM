@@ -16,6 +16,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import os
+import requests
 
 # ページ設定
 st.set_page_config(
@@ -109,112 +110,183 @@ class StreamlitEmailWebApp:
 
 def get_companies_data():
     """
-    fusion_crm.dbの詳細調査（デバッグ強化版）
+    Google Sheets からデータ取得（FusionCRM本体と同期）
     """
-    try:
-        db_path = 'fusion_crm.db'
-        
-        if not os.path.exists(db_path):
-            st.error(f"❌ データベースファイルが見つかりません: {db_path}")
-            return pd.DataFrame()
-        
-        st.info(f"🔍 データベース調査開始: {db_path}")
-        
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # 1. すべてのテーブル一覧を取得
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = [row[0] for row in cursor.fetchall()]
-        st.success(f"📋 発見されたテーブル: {tables}")
-        
-        if not tables:
-            st.error("❌ テーブルが見つかりません")
-            conn.close()
-            return pd.DataFrame()
-        
-        # 2. 各テーブルの詳細調査
-        for table_name in tables:
-            try:
-                st.write(f"\n🔍 **テーブル '{table_name}' の調査:**")
-                
-                # テーブル構造
-                cursor.execute(f"PRAGMA table_info({table_name})")
-                columns = cursor.fetchall()
-                col_names = [col[1] for col in columns]
-                st.write(f"   📋 列: {col_names}")
-                
-                # レコード数
-                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-                count = cursor.fetchone()[0]
-                st.write(f"   📊 レコード数: {count}")
-                
-                # サンプルデータ（最初の3行）
-                if count > 0:
-                    cursor.execute(f"SELECT * FROM {table_name} LIMIT 3")
-                    sample_data = cursor.fetchall()
-                    st.write(f"   📄 サンプルデータ:")
-                    for i, row in enumerate(sample_data, 1):
-                        st.write(f"      行{i}: {dict(zip(col_names, row))}")
-                
-                # メールアドレスっぽい列があるかチェック
-                email_cols = [col for col in col_names if any(keyword in col.lower() for keyword in ['email', 'mail', 'メール'])]
-                if email_cols:
-                    st.success(f"   ✅ メール列発見: {email_cols}")
-                    
-                    # メールアドレスがあるレコード数
-                    email_col = email_cols[0]
-                    cursor.execute(f"SELECT COUNT(*) FROM {table_name} WHERE {email_col} IS NOT NULL AND {email_col} != ''")
-                    email_count = cursor.fetchone()[0]
-                    st.write(f"   📧 メールアドレス有りレコード: {email_count}")
-                    
-                    if email_count > 0:
-                        # 実際のメールアドレスサンプル
-                        cursor.execute(f"SELECT {email_col} FROM {table_name} WHERE {email_col} IS NOT NULL AND {email_col} != '' LIMIT 5")
-                        email_samples = [row[0] for row in cursor.fetchall()]
-                        st.write(f"   📧 メールサンプル: {email_samples}")
-                        
-                        # このテーブルからデータを取得してみる
-                        company_col = next((col for col in col_names if any(keyword in col.lower() for keyword in ['name', '名前', 'company'])), col_names[0])
-                        
-                        query = f"""
-                            SELECT 
-                                {company_col} as company_name,
-                                {email_col} as email_address,
-                                'New' as status,
-                                50 as picocela_relevance_score
-                            FROM {table_name}
-                            WHERE {email_col} IS NOT NULL 
-                            AND {email_col} != ''
-                            LIMIT 10
-                        """
-                        
-                        st.write(f"   🔍 テストクエリ: {query}")
-                        
-                        try:
-                            df = pd.read_sql_query(query, conn)
-                            st.success(f"   ✅ データ取得成功: {len(df)}件")
-                            
-                            # 取得したデータを表示
-                            st.write("   📊 取得データ:")
-                            st.dataframe(df)
-                            
-                            conn.close()
-                            return df
-                            
-                        except Exception as query_error:
-                            st.error(f"   ❌ クエリエラー: {query_error}")
-                
-            except Exception as table_error:
-                st.error(f"❌ テーブル '{table_name}' 調査エラー: {table_error}")
-                continue
-        
-        conn.close()
-        
-    except Exception as e:
-        st.error(f"❌ データベース調査エラー: {e}")
+    st.info("🔍 データソース確認中...")
     
-    # フォールバック
+    # 1. Google Sheets から直接データを取得
+    try:
+        # FusionCRM Database のGoogle Sheets URL
+        sheets_url = "https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdk_xr_7WNY"
+        
+        # CSVエクスポート用のURL（公開されている場合）
+        csv_export_url = f"{sheets_url}/export?format=csv&gid=0"
+        
+        st.info(f"🔗 Google Sheets 接続試行: {sheets_url}")
+        
+        try:
+            # CSV形式でデータを取得
+            response = requests.get(csv_export_url, timeout=10)
+            
+            if response.status_code == 200:
+                # CSVデータをPandasで読み込み
+                from io import StringIO
+                csv_data = StringIO(response.text)
+                df = pd.read_csv(csv_data)
+                
+                st.success(f"✅ Google Sheets から {len(df)}件のデータを取得成功")
+                st.info(f"📋 取得した列: {list(df.columns)}")
+                
+                # データの最初の3行を表示
+                if len(df) > 0:
+                    st.write("📊 データサンプル:")
+                    st.dataframe(df.head(3))
+                
+                # 列名を標準化
+                column_mapping = {}
+                for col in df.columns:
+                    col_lower = col.lower()
+                    if any(keyword in col_lower for keyword in ['company_name', 'name']):
+                        column_mapping[col] = 'company_name'
+                    elif any(keyword in col_lower for keyword in ['email']):
+                        column_mapping[col] = 'email_address'
+                    elif any(keyword in col_lower for keyword in ['picocela_rele', 'priority']):
+                        column_mapping[col] = 'picocela_relevance_score'
+                    elif any(keyword in col_lower for keyword in ['status']):
+                        column_mapping[col] = 'status'
+                
+                # 列名変更
+                df_renamed = df.rename(columns=column_mapping)
+                
+                # 必須列が存在するかチェック
+                if 'company_name' in df_renamed.columns and 'email_address' in df_renamed.columns:
+                    # データをクリーニング
+                    df_clean = df_renamed[['company_name', 'email_address']].copy()
+                    
+                    # ステータスとスコアを追加（存在しない場合）
+                    if 'status' not in df_renamed.columns:
+                        df_clean['status'] = 'New'
+                    else:
+                        df_clean['status'] = df_renamed['status'].fillna('New')
+                    
+                    if 'picocela_relevance_score' not in df_renamed.columns:
+                        df_clean['picocela_relevance_score'] = 50
+                    else:
+                        df_clean['picocela_relevance_score'] = pd.to_numeric(df_renamed['picocela_relevance_score'], errors='coerce').fillna(50)
+                    
+                    # 有効なメールアドレスのみフィルタ
+                    df_clean = df_clean[df_clean['email_address'].notna()]
+                    df_clean = df_clean[df_clean['email_address'].str.contains('@', na=False)]
+                    df_clean = df_clean[df_clean['company_name'].notna()]
+                    
+                    st.success(f"📧 有効なメールアドレス: {len(df_clean)}件")
+                    
+                    if len(df_clean) > 0:
+                        return df_clean
+                    else:
+                        st.warning("⚠️ 有効なデータが見つかりません")
+                else:
+                    st.error("❌ 必要な列（company_name, email）が見つかりません")
+                    
+            else:
+                st.warning(f"⚠️ Google Sheets アクセス失敗 (ステータス: {response.status_code})")
+                
+        except Exception as sheets_error:
+            st.warning(f"⚠️ Google Sheets 接続エラー: {sheets_error}")
+            
+    except Exception as e:
+        st.error(f"❌ Google Sheets 処理エラー: {e}")
+    
+    # 2. Google Apps Script API 経由でデータ取得を試行
+    try:
+        st.info("🔄 Google Apps Script API 経由での取得を試行...")
+        
+        # FusionCRM本体で使用されているGoogle Apps Script URL
+        gas_url = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"  # 実際のURLに置き換えが必要
+        
+        # ここでGoogle Apps Script経由のデータ取得を実装
+        # （現在は仮の実装）
+        
+    except Exception as gas_error:
+        st.warning(f"⚠️ Google Apps Script API エラー: {gas_error}")
+    
+    # 3. 手動データ入力オプション
+    st.write("---")
+    st.subheader("📝 手動企業データ入力")
+    st.info("💡 Google Sheets のデータが取得できない場合は、手動でデータを入力してください")
+    
+    with st.expander("➕ 企業データを手動で追加"):
+        with st.form("manual_company_input"):
+            col1, col2 = st.columns(2)
+            with col1:
+                company_name = st.text_input("会社名", value="FUSIONDRIVER")
+                email = st.text_input("メールアドレス", value="koji@fusiondriver.biz")
+            with col2:
+                status = st.selectbox("ステータス", ["New", "Contacted", "Replied"])
+                score = st.number_input("優先スコア", min_value=0, max_value=100, value=70)
+            
+            if st.form_submit_button("➕ 企業を追加"):
+                if company_name and email and '@' in email:
+                    # セッション状態に保存
+                    if 'manual_companies' not in st.session_state:
+                        st.session_state.manual_companies = []
+                    
+                    st.session_state.manual_companies.append({
+                        'company_name': company_name,
+                        'email_address': email,
+                        'status': status,
+                        'picocela_relevance_score': score
+                    })
+                    
+                    st.success(f"✅ {company_name} を追加しました")
+                    st.rerun()  # 画面を更新
+                else:
+                    st.error("❌ 会社名と有効なメールアドレスを入力してください")
+    
+    # 4. 手動入力データを返す
+    if 'manual_companies' in st.session_state and st.session_state.manual_companies:
+        df = pd.DataFrame(st.session_state.manual_companies)
+        st.success(f"✅ 手動入力データを使用: {len(df)}社")
+        st.dataframe(df)
+        return df
+    
+    # 5. Google Sheets URL の設定オプション
+    st.write("---")
+    st.subheader("🔗 Google Sheets URL 設定")
+    
+    with st.expander("⚙️ Google Sheets 接続設定"):
+        st.markdown("""
+        **FusionCRM本体のGoogle Sheetsに直接接続するには：**
+        
+        1. **Google Sheets を公開設定にする**
+        2. **シートのURLをコピー**
+        3. **以下に入力**
+        """)
+        
+        sheets_url_input = st.text_input(
+            "Google Sheets URL", 
+            value="https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdk_xr_7WNY",
+            help="FusionCRMで使用されているGoogle SheetsのURL"
+        )
+        
+        if st.button("🔄 指定したシートからデータを取得"):
+            if sheets_url_input:
+                try:
+                    csv_url = f"{sheets_url_input}/export?format=csv&gid=0"
+                    response = requests.get(csv_url, timeout=10)
+                    
+                    if response.status_code == 200:
+                        df = pd.read_csv(StringIO(response.text))
+                        st.success(f"✅ 指定シートから {len(df)}件取得")
+                        st.dataframe(df.head())
+                        # この結果をセッション状態に保存することも可能
+                    else:
+                        st.error(f"❌ シートアクセス失敗: {response.status_code}")
+                        
+                except Exception as e:
+                    st.error(f"❌ 取得エラー: {e}")
+    
+    # 6. フォールバック（FUSIONDRIVERを含む）
     st.warning("⚠️ フォールバックデータを使用します")
     sample_data = {
         'company_name': ['FUSIONDRIVER', 'テストコンストラクション株式会社', 'スマートビルディング合同会社'],
