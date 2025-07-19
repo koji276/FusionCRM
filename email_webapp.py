@@ -765,8 +765,8 @@ def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict,
         status_text.text(f"送信中: {company.get('company_name', 'Unknown')} ({i+1}/{len(target_companies)})")
         
         # データベースからメール取得
-        company_id = company.get('company_id')
-        stored_email = db.get_generated_email(company_id, language, template_type)
+        company_name = company.get('company_name')
+        stored_email = db.get_generated_email(company_name, language, template_type)
         
         if stored_email:
             try:
@@ -780,8 +780,8 @@ def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict,
                 
                 # 送信履歴保存
                 send_record = {
-                    'company_id': company_id,
-                    'company_name': company.get('company_name'),
+                    'company_id': company.get('company_id', ''),
+                    'company_name': company_name,
                     'recipient_email': company.get('email'),
                     'language': language,
                     'subject': stored_email['subject'],
@@ -804,8 +804,8 @@ def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict,
                 
                 # エラー履歴保存
                 send_record = {
-                    'company_id': company_id,
-                    'company_name': company.get('company_name'),
+                    'company_id': company.get('company_id', ''),
+                    'company_name': company_name,
                     'recipient_email': company.get('email'),
                     'language': language,
                     'subject': stored_email.get('subject', 'Unknown'),
