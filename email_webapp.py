@@ -1,710 +1,1024 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-FusionCRM - Streamlit Cloud対応 メール配信システム（完全修正版・エラー修正）
-実際のデータベース接続 + 確実なSMTP送信
+統合メールシステム - 日本語個別生成 + 英語バッチ処理
+既存のemail_webapp.pyに統合する完全版
 """
 
-import streamlit as st
+import openai
+import json
+import time
 import sqlite3
 import pandas as pd
-import json
+from typing import Dict, List, Optional
+from datetime import datetime
+import streamlit as st
 import smtplib
-import time
-import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
-import os
-import requests
 
-# ページ設定
-st.set_page_config(
-    page_title="📧 FusionCRM メール配信システム",
-    page_icon="📧",
-    layout="wide"
-)
-
-# セッション状態の初期化
-if 'gmail_config' not in st.session_state:
-    st.session_state.gmail_config = None
-if 'setup_completed' not in st.session_state:
-    st.session_state.setup_completed = False
-
-class StreamlitEmailWebApp:
-    """Streamlit Cloud対応メール配信Webアプリケーション（完全修正版）"""
-    
-    def __init__(self):
-        pass
-    
-    def is_gmail_configured(self):
-        """Gmail設定状況確認"""
-        return st.session_state.gmail_config is not None and st.session_state.setup_completed
-    
-    def save_gmail_config_to_session(self, config):
-        """Gmail設定をセッション状態に保存"""
-        try:
-            st.session_state.gmail_config = config
-            st.session_state.setup_completed = True
-            return True
-        except Exception as e:
-            st.error(f"設定保存エラー: {e}")
-            return False
-    
-    def test_gmail_connection(self, config):
-        """Gmail接続テスト"""
-        try:
-            server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
-            server.starttls()
-            server.login(config['email'], config['password'])
-            server.quit()
-            return True, "接続成功"
-        except Exception as e:
-            return False, f"接続エラー: {str(e)}"
-    
-    def send_email(self, to_email, company_name, subject, body):
-        """メール送信（前回成功したSMTP方式）"""
-        if not self.is_gmail_configured():
-            return False, "Gmail設定が無効です"
-        
-        try:
-            config = st.session_state.gmail_config
-            
-            msg = MIMEMultipart()
-            msg['From'] = f"{config['sender_name']} <{config['email']}>"
-            msg['To'] = to_email
-            msg['Subject'] = subject
-            
-            formatted_body = body.replace('{company_name}', company_name)
-            msg.attach(MIMEText(formatted_body, 'plain', 'utf-8'))
-            
-            server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
-            server.starttls()
-            server.login(config['email'], config['password'])
-            
-            text = msg.as_string()
-            server.sendmail(config['email'], to_email, text)
-            server.quit()
-            
-            return True, "送信成功"
-            
-        except Exception as e:
-            return False, f"送信エラー: {str(e)}"
-    
-    def update_company_status(self, company_name, new_status="Contacted"):
-        """企業ステータス更新"""
-        try:
-            conn = sqlite3.connect('fusion_crm.db')
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE companies 
-                SET sales_status = ?, updated_at = datetime('now')
-                WHERE company_name = ?
-            """, (new_status, company_name))
-            conn.commit()
-            conn.close()
-            return True
-        except Exception as e:
-            st.warning(f"ステータス更新エラー: {e}")
-            return False
-
-def get_companies_data():
-    """
-    Google Sheets からデータ取得（FusionCRM本体と同期）
-    """
-    st.info("🔍 データソース確認中...")
-    
-    # 1. Google Sheets から直接データを取得
+# ===== 既存のGmail送信機能 =====
+def send_email_smtp(to_email: str, subject: str, body: str, gmail_config: Dict) -> bool:
+    """Gmail SMTP経由でメール送信"""
     try:
-        # FusionCRM Database のGoogle Sheets URL（修正版）
-        sheets_url = "https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdK_xr_7WNY"
+        # SMTP設定
+        smtp_server = "smtp.gmail.com"
+        smtp_port = 587
         
-        # CSVエクスポート用のURL（公開されている場合）
-        csv_export_url = f"{sheets_url}/export?format=csv&gid=580124806"
+        # MIMEメッセージ作成
+        msg = MIMEMultipart()
+        msg['From'] = f"{gmail_config['sender_name']} <{gmail_config['email']}>"
+        msg['To'] = to_email
+        msg['Subject'] = subject
         
-        st.info(f"🔗 Google Sheets 接続試行: {sheets_url}")
+        # 本文添付
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
         
-        try:
-            # CSV形式でデータを取得
-            response = requests.get(csv_export_url, timeout=10)
-            
-            if response.status_code == 200:
-                # CSVデータをPandasで読み込み
-                from io import StringIO
-                csv_data = StringIO(response.text)
-                df = pd.read_csv(csv_data)
-                
-                st.success(f"✅ Google Sheets から {len(df)}件のデータを取得成功")
-                st.info(f"📋 取得した列: {list(df.columns)}")
-                
-                # データの最初の3行を表示
-                if len(df) > 0:
-                    st.write("📊 データサンプル:")
-                    st.dataframe(df.head(3))
-                
-                # 直接的なデータ処理（エラー回避）
-                try:
-                    # 必要な列を直接選択
-                    if 'company_name' in df.columns and 'email' in df.columns:
-                        # 基本的なデータ抽出
-                        companies_data = []
-                        
-                        for idx, row in df.iterrows():
-                            try:
-                                company_name = str(row['company_name']).strip()
-                                email = str(row['email']).strip()
-                                
-                                # 有効なデータかチェック
-                                if company_name and email and '@' in email and company_name != 'nan' and email != 'nan':
-                                    companies_data.append({
-                                        'company_name': company_name,
-                                        'email_address': email,
-                                        'status': 'New',
-                                        'picocela_relevance_score': 50
-                                    })
-                            except Exception as row_error:
-                                st.warning(f"⚠️ 行 {idx} の処理をスキップ: {row_error}")
-                                continue
-                        
-                        if companies_data:
-                            df_result = pd.DataFrame(companies_data)
-                            
-                            # 重複除去
-                            df_result = df_result.drop_duplicates(subset=['email_address'])
-                            
-                            st.success(f"📧 有効なメールアドレス: {len(df_result)}件")
-                            st.write("📊 処理済みデータ:")
-                            st.dataframe(df_result)
-                            
-                            return df_result
-                        else:
-                            st.warning("⚠️ 有効なデータがありません")
-                    
-                    else:
-                        st.error(f"❌ 必要な列が見つかりません。利用可能な列: {list(df.columns)}")
-                        
-                        # 手動列選択
-                        st.write("**手動で列を選択してください:**")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            name_col = st.selectbox("会社名の列を選択", df.columns, key="name_col_select")
-                        with col2:
-                            email_col = st.selectbox("メールアドレスの列を選択", df.columns, key="email_col_select")
-                        
-                        if st.button("✅ 選択した列でデータを処理", key="process_manual"):
-                            try:
-                                companies_data = []
-                                
-                                for idx, row in df.iterrows():
-                                    try:
-                                        company_name = str(row[name_col]).strip()
-                                        email = str(row[email_col]).strip()
-                                        
-                                        if company_name and email and '@' in email and company_name != 'nan' and email != 'nan':
-                                            companies_data.append({
-                                                'company_name': company_name,
-                                                'email_address': email,
-                                                'status': 'New',
-                                                'picocela_relevance_score': 50
-                                            })
-                                    except:
-                                        continue
-                                
-                                if companies_data:
-                                    df_manual = pd.DataFrame(companies_data)
-                                    df_manual = df_manual.drop_duplicates(subset=['email_address'])
-                                    
-                                    st.success(f"✅ 手動選択で {len(df_manual)}件のデータを処理")
-                                    st.dataframe(df_manual)
-                                    
-                                    # セッション状態に保存
-                                    st.session_state['sheets_companies'] = df_manual.to_dict('records')
-                                    st.rerun()
-                                    
-                            except Exception as manual_error:
-                                st.error(f"❌ 手動処理エラー: {manual_error}")
-                
-                except Exception as processing_error:
-                    st.error(f"❌ データ処理エラー: {processing_error}")
-                    st.info("フォールバックモードでデータを処理します...")
-                    
-                    # 最小限のフォールバック処理
-                    if len(df) > 0:
-                        try:
-                            # 最初の行のFUSIONDRIVERデータを手動で抽出
-                            fusiondriver_data = [{
-                                'company_name': 'FUSIONDRIVER',
-                                'email_address': 'koji@fusiondriver.biz',
-                                'status': 'New',
-                                'picocela_relevance_score': 70
-                            }]
-                            
-                            df_fallback = pd.DataFrame(fusiondriver_data)
-                            st.info("📧 フォールバック: FUSIONDRIVERデータを使用")
-                            st.dataframe(df_fallback)
-                            
-                            return df_fallback
-                            
-                        except Exception as fallback_error:
-                            st.error(f"❌ フォールバック処理エラー: {fallback_error}")
-                            
-            else:
-                st.warning(f"⚠️ Google Sheets アクセス失敗 (ステータス: {response.status_code})")
-                
-        except Exception as sheets_error:
-            st.warning(f"⚠️ Google Sheets 接続エラー: {sheets_error}")
-            
+        # SMTP接続・送信
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(gmail_config['email'], gmail_config['password'])
+        server.send_message(msg)
+        server.quit()
+        
+        return True
+        
     except Exception as e:
-        st.error(f"❌ Google Sheets 処理エラー: {e}")
+        st.error(f"メール送信エラー: {str(e)}")
+        return False
+
+# ===== 英語カスタマイズエンジン =====
+class EnglishEmailCustomizer:
+    """英語パートナーシップメールのカスタマイゼーション"""
     
-    # 2. Google Apps Script API 経由でデータ取得を試行
-    try:
-        st.info("🔄 Google Apps Script API 経由での取得を試行...")
+    def __init__(self, api_key: str = None):
+        if api_key:
+            openai.api_key = api_key
         
-        # FusionCRM本体で使用されているGoogle Apps Script URL
-        gas_url = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"  # 実際のURLに置き換えが必要
-        
-        # ここでGoogle Apps Script経由のデータ取得を実装
-        # （現在は仮の実装）
-        
-    except Exception as gas_error:
-        st.warning(f"⚠️ Google Apps Script API エラー: {gas_error}")
+        # 高品質ベースメール（提供されたもの）
+        self.base_email_template = """Subject: Exploring Strategic Partnership for Industrial Mesh Wi-Fi Solutions
+
+Dear {title},
+
+I hope this message finds you well.
+
+My name is Koji Tokuda from PicoCELA Inc. (NASDAQ: PCLA), a NASDAQ-listed company specializing in advanced Industrial multi-hop mesh Wi-Fi access point solutions.
+
+PicoCELA's unique technology enables:
+• Ultra-stable, multi-hop wireless connectivity over wide areas (10 hops available)
+• Video, Voice, Robotics control traffic available even if mesh (2-3m sec/hop latency)  
+• Reduced installation costs and deployment time (Maximum 90% LAN cable reduction)
+• Reliable coverage in challenging environments such as:
+{industry_specific_environments}
+
+{custom_value_proposition}
+
+As we continue to expand globally, we are eager to establish partnerships that deliver mutual value. Beyond offering our technology, we support partners in expanding their business into the Japanese and broader Asian markets. By combining your solutions with our technology, we believe we can create differentiated offerings and new business opportunities in both regions.
+
+For more information about PicoCELA and our solutions, please visit our website: https://picocela.com/en/
+
+Would you be open to a brief call to discuss potential collaboration?
+
+If you prefer not to receive further communication regarding potential business collaboration, please let me know, and I will remove you from our contact list.
+
+Thank you very much for your time.
+
+Best regards,
+Koji Tokuda
+Business Development Manager
+PicoCELA Inc. (NASDAQ: PCLA)
+tokuda@picocela.com
+1-408-850-5058
+4F SANOS Nihombashi Building,
+2−34−5 Nihombashi-Ningyocho,
+Chuo-ku, Tokyo 103-0013, Japan
+https://picocela.com/en/"""
+
+        # パートナーシップ特化カスタマイズプロンプト
+        self.customization_prompt = """
+Customize PicoCELA partnership proposal for specific company.
+
+Company: {company_name}
+Business: {description}
+
+This is a PARTNERSHIP proposal (not sales). Focus on mutual business opportunities.
+
+Current generic environments:
+• Industrial facilities
+• Construction sites  
+• Mines
+• Disaster recovery and temporary networks
+• Warehouses
+
+Task: Replace with 4-5 challenging environments specific to this company's target markets/customers.
+
+Requirements:
+- Match their industry expertise and customer base
+- Emphasize technical RF/networking challenges PicoCELA solves
+- Show you understand their business domain
+- Use professional technical language
+
+Output JSON:
+{{
+  "partnership_environments": "• [Environment 1 specific to their customers]\\n• [Environment 2]\\n• [Environment 3]\\n• [Environment 4]\\n• [Environment 5 if relevant]",
+  "partnership_value": "2-3 sentences about mutual partnership benefits for their business and customer base",
+  "suggested_title": "Business Development Manager/Partnership Manager/CEO etc"
+}}
+
+Focus on THEIR CUSTOMERS' challenges that PicoCELA can help solve.
+"""
     
-    # 3. 手動データ入力オプション
-    st.write("---")
-    st.subheader("📝 手動企業データ入力")
-    st.info("💡 Google Sheets のデータが取得できない場合は、手動でデータを入力してください")
-    
-    with st.expander("➕ 企業データを手動で追加"):
-        with st.form("manual_company_input"):
-            col1, col2 = st.columns(2)
-            with col1:
-                company_name = st.text_input("会社名", value="FUSIONDRIVER")
-                email = st.text_input("メールアドレス", value="koji@fusiondriver.biz")
-            with col2:
-                status = st.selectbox("ステータス", ["New", "Contacted", "Replied"])
-                score = st.number_input("優先スコア", min_value=0, max_value=100, value=70)
+    def customize_email_gpt35(self, company_data: Dict) -> Dict:
+        """GPT-3.5による英語メールカスタマイズ"""
+        company_name = company_data.get('company_name', '')
+        description = company_data.get('description', '')
+        
+        if not description or description.strip() == "":
+            return self._create_fallback_email(company_name)
+        
+        try:
+            # GPT-3.5でカスタマイズ部分のみ生成
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "user", "content": self.customization_prompt.format(
+                        company_name=company_name,
+                        description=description
+                    )}
+                ],
+                max_tokens=300,
+                temperature=0.3,
+                timeout=30
+            )
             
-            if st.form_submit_button("➕ 企業を追加"):
-                if company_name and email and '@' in email:
-                    # セッション状態に保存
-                    if 'manual_companies' not in st.session_state:
-                        st.session_state.manual_companies = []
-                    
-                    st.session_state.manual_companies.append({
-                        'company_name': company_name,
-                        'email_address': email,
-                        'status': status,
-                        'picocela_relevance_score': score
-                    })
-                    
-                    st.success(f"✅ {company_name} を追加しました")
-                    st.rerun()  # 画面を更新
-                else:
-                    st.error("❌ 会社名と有効なメールアドレスを入力してください")
+            # コスト計算
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cost = (input_tokens * 0.0015 + output_tokens * 0.002) / 1000
+            
+            # レスポンス解析
+            result_text = response.choices[0].message.content.strip()
+            
+            if result_text.startswith('```json'):
+                result_text = result_text.replace('```json', '').replace('```', '')
+            
+            customization = json.loads(result_text)
+            
+            # ベースメールにカスタマイズを適用
+            customized_email = self.base_email_template.format(
+                title=customization.get('suggested_title', 'Business Development Manager'),
+                industry_specific_environments=customization.get('partnership_environments', ''),
+                custom_value_proposition=customization.get('partnership_value', '')
+            )
+            
+            return {
+                'company_id': company_data.get('company_id'),
+                'company_name': company_name,
+                'customized_email': customized_email,
+                'subject': 'Exploring Strategic Partnership for Industrial Mesh Wi-Fi Solutions',
+                'partnership_environments': customization.get('partnership_environments'),
+                'partnership_value': customization.get('partnership_value'),
+                'suggested_title': customization.get('suggested_title'),
+                'api_cost': cost,
+                'tokens_used': input_tokens + output_tokens,
+                'customization_method': 'gpt35',
+                'language': 'english',
+                'generated_at': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return self._create_fallback_email(company_name, error=str(e))
     
-    # 4. セッション状態からのデータ復元
-    if 'sheets_companies' in st.session_state and st.session_state.sheets_companies:
-        df = pd.DataFrame(st.session_state.sheets_companies)
-        st.success(f"✅ 前回取得したGoogle Sheetsデータを使用: {len(df)}社")
-        st.dataframe(df)
-        return df
-    if 'manual_companies' in st.session_state and st.session_state.manual_companies:
-        df = pd.DataFrame(st.session_state.manual_companies)
-        st.success(f"✅ 手動入力データを使用: {len(df)}社")
-        st.dataframe(df)
-        return df
-    
-    # 5. CSVデータ直接入力オプション
-    st.write("---")
-    st.subheader("📄 CSVデータ直接入力")
-    st.info("💡 Google SheetsからコピーしたCSVデータを直接貼り付けてください")
-    
-    with st.expander("📋 CSVデータを貼り付け"):
-        st.markdown("""
-        **手順:**
-        1. Google Sheets を開く
-        2. 全データを選択してコピー (Ctrl+A → Ctrl+C)
-        3. 下のテキストエリアに貼り付け (Ctrl+V)
-        4. 「データを読み込み」をクリック
-        """)
-        
-        csv_text = st.text_area(
-            "CSVデータを貼り付け",
-            height=200,
-            placeholder="company_id,company_name,contact_name,email,phone,website,description...\nENR_17528887,FUSIONDRIVER,,koji@fusiondriver.biz,..."
+    def _create_fallback_email(self, company_name: str, error: str = None) -> Dict:
+        """フォールバックメール（元の汎用版）"""
+        customized_email = self.base_email_template.format(
+            title='Business Development Manager',
+            industry_specific_environments='• Industrial facilities\n• Construction sites\n• Mines\n• Disaster recovery and temporary networks\n• Warehouses',
+            custom_value_proposition='Our technology can significantly enhance your wireless infrastructure capabilities while reducing deployment costs and complexity.'
         )
         
-        if st.button("📊 データを読み込み"):
-            if csv_text.strip():
-                try:
-                    from io import StringIO
-                    csv_data = StringIO(csv_text)
-                    df = pd.read_csv(csv_data)
-                    
-                    st.success(f"✅ CSVデータ読み込み成功: {len(df)}行")
-                    st.info(f"📋 検出された列: {list(df.columns)}")
-                    
-                    # データのプレビュー
-                    st.write("📊 データプレビュー:")
-                    st.dataframe(df.head())
-                    
-                    # 列名を標準化
-                    column_mapping = {}
-                    for col in df.columns:
-                        col_lower = col.lower()
-                        if any(keyword in col_lower for keyword in ['company_name', 'name']) and 'contact' not in col_lower:
-                            column_mapping[col] = 'company_name'
-                        elif 'email' in col_lower and 'contact' not in col_lower:
-                            column_mapping[col] = 'email_address'
-                        elif any(keyword in col_lower for keyword in ['picocela_rele', 'priority']):
-                            column_mapping[col] = 'picocela_relevance_score'
-                    
-                    # 必要な列が存在するかチェック
-                    name_col = None
-                    email_col = None
-                    
-                    for original, mapped in column_mapping.items():
-                        if mapped == 'company_name':
-                            name_col = original
-                        elif mapped == 'email_address':
-                            email_col = original
-                    
-                    if not name_col:
-                        name_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]  # company_name は通常2列目
-                    if not email_col:
-                        # email列を探す
-                        for col in df.columns:
-                            if 'email' in col.lower():
-                                email_col = col
-                                break
-                    
-                    if name_col and email_col:
-                        # データをクリーニング
-                        df_clean = df[[name_col, email_col]].copy()
-                        df_clean.columns = ['company_name', 'email_address']
-                        df_clean['status'] = 'New'
-                        df_clean['picocela_relevance_score'] = 50
-                        
-                        # 有効なデータのみフィルタ
-                        df_clean = df_clean[df_clean['email_address'].notna()]
-                        df_clean = df_clean[df_clean['email_address'].str.contains('@', na=False)]
-                        df_clean = df_clean[df_clean['company_name'].notna()]
-                        
-                        # セッション状態に保存
-                        st.session_state['csv_companies'] = df_clean.to_dict('records')
-                        
-                        st.success(f"📧 有効なメールアドレス: {len(df_clean)}件")
-                        st.write("📊 処理済みデータ:")
-                        st.dataframe(df_clean)
-                        
-                        return df_clean
-                    else:
-                        st.error(f"❌ 必要な列が見つかりません。会社名列: {name_col}, メール列: {email_col}")
-                        
-                except Exception as e:
-                    st.error(f"❌ CSV読み込みエラー: {e}")
-            else:
-                st.error("❌ CSVデータを入力してください")
+        return {
+            'company_name': company_name,
+            'customized_email': customized_email,
+            'subject': 'Exploring Strategic Partnership for Industrial Mesh Wi-Fi Solutions',
+            'partnership_environments': '• Industrial facilities\n• Construction sites\n• Mines\n• Disaster recovery and temporary networks\n• Warehouses',
+            'partnership_value': 'Our technology can significantly enhance your wireless infrastructure capabilities while reducing deployment costs and complexity.',
+            'suggested_title': 'Business Development Manager',
+            'api_cost': 0.0,
+            'customization_method': 'fallback',
+            'language': 'english',
+            'error': error,
+            'generated_at': datetime.now().isoformat()
+        }
+
+# ===== データベース管理 =====
+class IntegratedEmailDatabase:
+    """統合メールデータベース（日本語・英語対応）"""
     
-    # 6. CSV入力データを返す
-    if 'csv_companies' in st.session_state and st.session_state.csv_companies:
-        df = pd.DataFrame(st.session_state.csv_companies)
-        st.success(f"✅ CSV入力データを使用: {len(df)}社")
-        return df
-    st.write("---")
-    st.subheader("🔗 Google Sheets URL 設定")
+    def __init__(self, db_path: str = "picocela_integrated_emails.db"):
+        self.db_path = db_path
+        self.init_database()
     
-    with st.expander("⚙️ Google Sheets 接続設定"):
-        st.markdown("""
-        **FusionCRM本体のGoogle Sheetsに直接接続するには：**
+    def init_database(self):
+        """データベース初期化"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
         
-        1. **Google Sheets を公開設定にする**
-        2. **シートのURLをコピー**
-        3. **以下に入力**
+        # 統合メールテーブル
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS integrated_emails (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id TEXT,
+                company_name TEXT,
+                language TEXT,
+                subject TEXT,
+                email_body TEXT,
+                customization_data TEXT,
+                api_cost REAL,
+                tokens_used INTEGER,
+                customization_method TEXT,
+                generated_at TEXT,
+                UNIQUE(company_id, language) ON CONFLICT REPLACE
+            )
         """)
         
-        sheets_url_input = st.text_input(
-            "Google Sheets URL", 
-            value="https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdK_xr_7WNY",
-            help="FusionCRMで使用されているGoogle SheetsのURL"
-        )
+        # 送信履歴テーブル
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS integrated_send_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id TEXT,
+                company_name TEXT,
+                language TEXT,
+                subject TEXT,
+                sent_at TEXT,
+                status TEXT,
+                email_address TEXT
+            )
+        """)
         
-        if st.button("🔄 指定したシートからデータを取得"):
-            if sheets_url_input:
-                try:
-                    csv_url = f"{sheets_url_input}/export?format=csv&gid=0"
-                    response = requests.get(csv_url, timeout=10)
-                    
-                    if response.status_code == 200:
-                        df = pd.read_csv(StringIO(response.text))
-                        st.success(f"✅ 指定シートから {len(df)}件取得")
-                        st.dataframe(df.head())
-                        # この結果をセッション状態に保存することも可能
-                    else:
-                        st.error(f"❌ シートアクセス失敗: {response.status_code}")
-                        
-                except Exception as e:
-                    st.error(f"❌ 取得エラー: {e}")
+        conn.commit()
+        conn.close()
     
-    # 6. フォールバック（FUSIONDRIVERを含む）
-    st.warning("⚠️ フォールバックデータを使用します")
-    sample_data = {
-        'company_name': ['FUSIONDRIVER', 'テストコンストラクション株式会社', 'スマートビルディング合同会社'],
-        'email_address': ['koji@fusiondriver.biz', 'contact@test-construction.com', 'info@smart-building.co.jp'],
-        'status': ['New', 'New', 'New'],
-        'picocela_relevance_score': [70, 115, 120]
-    }
-    
-    return pd.DataFrame(sample_data)
-
-def render_header():
-    """ヘッダー"""
-    st.title("📧 FusionCRM メール配信システム")
-    st.markdown("**独立メール配信アプリケーション（エラー修正版）**")
-    
-    st.info("🔗 [メインシステムに戻る](https://automl-3ynrytum8tugw8ytcue7ay.streamlit.app/) （別タブで開く）")
-
-def render_gmail_setup():
-    """Gmail設定"""
-    st.header("⚙️ Gmail設定")
-    
-    app = StreamlitEmailWebApp()
-    
-    if app.is_gmail_configured():
-        st.success("✅ Gmail設定済み")
-        config = st.session_state.gmail_config
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info(f"**メール**: {config['email']}")
-        with col2:
-            st.info(f"**送信者名**: {config['sender_name']}")
+    def save_generated_email(self, email_data: Dict):
+        """生成メールをデータベースに保存"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
         
-        if st.button("🔄 設定をクリア"):
-            st.session_state.gmail_config = None
-            st.session_state.setup_completed = False
-            st.rerun()
-    else:
-        st.error("❌ Gmail設定が必要です")
-    
-    with st.expander("🔧 Gmail設定・変更"):
-        st.markdown("### 📋 前回成功した設定を使用")
-        st.info("前回の成功設定: tokuda@picocela.com + アプリパスワード")
+        # カスタマイズデータをJSONで保存
+        customization_data = {
+            'partnership_environments': email_data.get('partnership_environments'),
+            'partnership_value': email_data.get('partnership_value'),
+            'suggested_title': email_data.get('suggested_title')
+        }
         
-        with st.form("gmail_setup"):
-            email = st.text_input("Gmailアドレス", value="tokuda@picocela.com")
-            password = st.text_input("アプリパスワード", type="password", placeholder="bmzr lbrs cbbn jtmr")
-            sender_name = st.text_input("送信者名", value="PicoCELA Inc.")
-            
-            if st.form_submit_button("💾 設定保存"):
-                if email and password and sender_name:
-                    config = {
-                        "email": email,
-                        "password": password,
-                        "sender_name": sender_name,
-                        "smtp_server": "smtp.gmail.com",
-                        "smtp_port": 587
-                    }
-                    
-                    with st.spinner("接続テスト中..."):
-                        success, message = app.test_gmail_connection(config)
-                    
-                    if success:
-                        app.save_gmail_config_to_session(config)
-                        st.success("✅ 設定保存完了")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ {message}")
-                else:
-                    st.error("すべての項目を入力してください")
+        cursor.execute("""
+            INSERT OR REPLACE INTO integrated_emails 
+            (company_id, company_name, language, subject, email_body, customization_data,
+             api_cost, tokens_used, customization_method, generated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            email_data.get('company_id'),
+            email_data.get('company_name'),
+            email_data.get('language', 'english'),
+            email_data.get('subject'),
+            email_data.get('customized_email'),
+            json.dumps(customization_data),
+            email_data.get('api_cost'),
+            email_data.get('tokens_used'),
+            email_data.get('customization_method'),
+            email_data.get('generated_at')
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_generated_email(self, company_id: str, language: str = 'english') -> Optional[Dict]:
+        """生成済みメールを取得"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM integrated_emails WHERE company_id = ? AND language = ?
+        """, (company_id, language))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            columns = [desc[0] for desc in cursor.description]
+            email_data = dict(zip(columns, result))
+            # JSONデータを展開
+            if email_data['customization_data']:
+                customization = json.loads(email_data['customization_data'])
+                email_data.update(customization)
+            return email_data
+        return None
 
-def render_email_campaign():
-    """メール配信（完全修正版）"""
-    st.header("📧 メール配信")
+# ===== バッチ処理システム =====
+def generate_english_emails_batch(companies_data: List[Dict], max_companies: int = None) -> Dict:
+    """英語メールバッチ生成"""
+    customizer = EnglishEmailCustomizer()
+    db = IntegratedEmailDatabase()
     
-    app = StreamlitEmailWebApp()
+    companies_to_process = companies_data[:max_companies] if max_companies else companies_data
+    total_companies = len(companies_to_process)
     
-    if not app.is_gmail_configured():
-        st.error("❌ Gmail設定が必要です。上記で設定してください。")
-        return
+    st.write(f"🌍 {total_companies}社の英語パートナーシップメール生成中...")
     
-    df = get_companies_data()
-    
-    if len(df) == 0:
-        st.error("❌ 配信対象企業が見つかりません")
-        return
-    
-    st.subheader("🎯 配信対象")
+    # 処理予測
+    estimated_time_minutes = (total_companies * 2) / 60
+    estimated_cost = total_companies * 0.0004
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        status_options = ["全て"] + list(df['status'].unique()) if 'status' in df.columns else ["全て", "New"]
-        status_filter = st.selectbox("ステータス", status_options)
+        st.metric("処理対象", f"{total_companies}社")
     with col2:
-        min_score = st.number_input("最小スコア", min_value=0, value=0)
+        st.metric("予想時間", f"{estimated_time_minutes:.1f}分")
     with col3:
-        max_count = st.number_input("最大送信数", min_value=1, max_value=50, value=1)
+        st.metric("予想コスト", f"${estimated_cost:.3f}")
     
-    filtered_df = df.copy()
+    # バッチ処理実行
+    results = []
+    total_cost = 0.0
+    success_count = 0
     
-    if status_filter != "全て":
-        filtered_df = filtered_df[filtered_df['status'] == status_filter]
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    time_tracker = st.empty()
     
-    if 'picocela_relevance_score' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['picocela_relevance_score'] >= min_score]
-        filtered_df = filtered_df.sort_values('picocela_relevance_score', ascending=False)
+    start_time = time.time()
     
-    filtered_df = filtered_df.head(max_count)
-    
-    st.info(f"📊 配信対象: {len(filtered_df)}社")
-    
-    if len(filtered_df) > 0:
-        with st.expander("📋 配信対象企業"):
-            display_columns = ['company_name', 'email_address', 'status']
-            if 'picocela_relevance_score' in filtered_df.columns:
-                display_columns.append('picocela_relevance_score')
-            st.dataframe(filtered_df[display_columns])
+    for i, company in enumerate(companies_to_process):
+        current_time = time.time()
+        elapsed_time = current_time - start_time
         
-        st.subheader("✉️ メール内容")
+        # 進捗更新
+        progress = (i + 1) / total_companies
+        progress_bar.progress(progress)
+        status_text.text(f"生成中: {company.get('company_name', 'Unknown')} ({i+1}/{total_companies})")
         
-        template_type = st.selectbox("テンプレート", ["初回提案", "フォローアップ", "カスタム"])
+        # 時間予測
+        if i > 0:
+            avg_time = elapsed_time / i
+            remaining_time = (total_companies - i) * avg_time / 60
+            time_tracker.text(f"経過: {elapsed_time/60:.1f}分 | 残り: {remaining_time:.1f}分")
         
-        if template_type == "初回提案":
-            default_subject = "PicoCELA メッシュネットワークソリューションのご案内"
-            default_body = """Dear {company_name} 様
+        # メール生成
+        result = customizer.customize_email_gpt35(company)
+        results.append(result)
+        
+        # データベース保存
+        db.save_generated_email(result)
+        
+        if result.get('customization_method') == 'gpt35':
+            success_count += 1
+            total_cost += result.get('api_cost', 0.0)
+        
+        # 5社ごとに進捗表示
+        if (i + 1) % 5 == 0:
+            success_rate = (success_count / (i + 1)) * 100
+            st.success(f"✅ {i+1}社完了 (GPT成功率: {success_rate:.1f}%)")
+        
+        # API制限対応
+        time.sleep(1)
+    
+    # 完了サマリー
+    end_time = time.time()
+    total_elapsed = end_time - start_time
+    
+    summary = {
+        'total_processed': total_companies,
+        'gpt35_success': success_count,
+        'fallback_used': total_companies - success_count,
+        'success_rate': (success_count / total_companies) * 100,
+        'total_cost_usd': total_cost,
+        'total_cost_jpy': total_cost * 150,
+        'total_time_minutes': total_elapsed / 60,
+        'avg_cost_per_email': total_cost / total_companies if total_companies > 0 else 0
+    }
+    
+    st.balloons()
+    st.success(f"🎉 英語メールバッチ生成完了！")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("GPT成功", f"{success_count}社", f"{summary['success_rate']:.1f}%")
+    with col2:
+        st.metric("総コスト", f"¥{summary['total_cost_jpy']:.0f}")
+    with col3:
+        st.metric("処理時間", f"{summary['total_time_minutes']:.1f}分")
+    with col4:
+        st.metric("平均コスト", f"${summary['avg_cost_per_email']:.4f}")
+    
+    return summary
 
-お世話になっております。
-株式会社PicoCELAの営業担当です。
-
-建設現場でのワイヤレス通信にお困りではありませんか？
-
-弊社のメッシュネットワーク技術により、以下のメリットを提供いたします：
-
-• 建設現場での安定したワイヤレス通信
-• 既存インフラに依存しない独立ネットワーク
-• IoTセンサー・モニタリング機器との連携
-• 現場安全性向上・デジタル化推進
-
-詳細な資料をお送りいたしますので、お時間をいただけますでしょうか。
-
-株式会社PicoCELA
-営業部"""
-        elif template_type == "フォローアップ":
-            default_subject = "PicoCELA メッシュネットワーク - フォローアップ"
-            default_body = """Dear {company_name} 様
-
-先日はお時間をいただき、ありがとうございました。
-
-弊社のメッシュネットワークソリューションについて、
-追加でご質問やご相談がございましたら、お気軽にお声がけください。
-
-株式会社PicoCELA
-営業部"""
+# ===== 瞬時送信システム =====
+def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict, 
+                            max_emails: int = 50, language: str = 'english') -> Dict:
+    """事前生成メールの瞬時送信"""
+    db = IntegratedEmailDatabase()
+    
+    st.write(f"📤 事前生成{language}メールの送信開始 (最大{max_emails}社)")
+    
+    sent_count = 0
+    failed_count = 0
+    target_companies = company_list[:max_emails]
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i, company in enumerate(target_companies):
+        # 進捗更新
+        progress = (i + 1) / len(target_companies)
+        progress_bar.progress(progress)
+        status_text.text(f"送信中: {company.get('company_name', 'Unknown')} ({i+1}/{len(target_companies)})")
+        
+        # データベースからメール取得
+        company_id = company.get('company_id')
+        stored_email = db.get_generated_email(company_id, language)
+        
+        if stored_email:
+            try:
+                # 瞬時送信
+                success = send_email_smtp(
+                    to_email=company.get('email'),
+                    subject=stored_email['subject'],
+                    body=stored_email['email_body'],
+                    gmail_config=gmail_config
+                )
+                
+                if success:
+                    sent_count += 1
+                    st.success(f"✅ {company.get('company_name')} - 送信成功")
+                else:
+                    failed_count += 1
+                    st.error(f"❌ {company.get('company_name')} - 送信失敗")
+                    
+            except Exception as e:
+                failed_count += 1
+                st.error(f"❌ {company.get('company_name')} - エラー: {str(e)[:30]}")
         else:
-            default_subject = ""
-            default_body = ""
+            failed_count += 1
+            st.warning(f"⚠️ {company.get('company_name')} - 事前生成メールなし")
         
-        subject = st.text_input("件名", value=default_subject)
-        body = st.text_area("本文", value=default_body, height=200)
-        
-        send_interval = st.slider("送信間隔（秒）", 1, 30, 5)
-        
-        # 修正された送信処理
-        confirm_checked = st.checkbox("✅ 配信実行を確認")
-        send_button = st.button("🚀 メール配信開始", type="primary")
-        
-        if send_button:
-            st.write("🔍 ボタンが押されました")
-            
-            if not subject:
-                st.error("❌ 件名が入力されていません")
-            elif not body:
-                st.error("❌ 本文が入力されていません")
-            elif not confirm_checked:
-                st.error("❌ 確認チェックボックスをチェックしてください")
-            else:
-                st.write("🚀 送信処理を開始します...")
-                
-                gmail_config = st.session_state.gmail_config
-                st.write(f"📧 送信元: {gmail_config.get('email', 'なし')}")
-                st.write(f"👤 送信者名: {gmail_config.get('sender_name', 'なし')}")
-                
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                results_container = st.container()
-                
-                success_count = 0
-                failed_count = 0
-                results = []
-                
-                for i, (idx, company) in enumerate(filtered_df.iterrows()):
-                    company_name = company['company_name']
-                    email_address = company['email_address']
-                    
-                    progress = (i + 1) / len(filtered_df)
-                    progress_bar.progress(progress)
-                    status_text.text(f"📧 {i+1}/{len(filtered_df)}. {company_name} ({email_address}) 送信中...")
-                    
-                    success, message = app.send_email(email_address, company_name, subject, body)
-                    
-                    if success:
-                        success_count += 1
-                        status_icon = "✅"
-                        app.update_company_status(company_name, "Contacted")
-                    else:
-                        failed_count += 1
-                        status_icon = "❌"
-                    
-                    results.append({
-                        'company': company_name,
-                        'email': email_address,
-                        'status': '成功' if success else '失敗',
-                        'message': message,
-                        'icon': status_icon
-                    })
-                    
-                    with results_container:
-                        st.write("📊 **送信結果:**")
-                        for result in results[-3:]:
-                            st.write(f"{result['icon']} {result['company']} - {result['status']}")
-                    
-                    if i < len(filtered_df) - 1:
-                        delay_variation = random.randint(-1, 2)
-                        actual_delay = max(1, send_interval + delay_variation)
-                        status_text.text(f"⏱️ {actual_delay}秒待機中...")
-                        time.sleep(actual_delay)
-                
-                progress_bar.progress(1.0)
-                status_text.success("🎉 配信完了！")
-                
-                st.success("📧 メール配信が完了しました！")
-                
-                col1, col2, col3 = st.columns(3)
-                col1.metric("✅ 送信成功", success_count)
-                col2.metric("❌ 送信失敗", failed_count)
-                total = success_count + failed_count
-                success_rate = (success_count / total * 100) if total > 0 else 0
-                col3.metric("📈 成功率", f"{success_rate:.1f}%")
-                
-                if st.checkbox("📋 詳細結果を表示"):
-                    st.write("**全送信結果:**")
-                    for result in results:
-                        st.write(f"{result['icon']} **{result['company']}** ({result['email']}) - {result['status']}")
-                        if result['status'] == '失敗':
-                            st.write(f"   💬 エラー: {result['message']}")
-    else:
-        st.warning("📭 フィルター条件に一致する企業がありません")
-
-def main():
-    """メイン関数"""
-    render_header()
-    render_gmail_setup()
-    render_email_campaign()
+        # 送信間隔
+        if i < len(target_companies) - 1:
+            time.sleep(60)
     
-    st.markdown("---")
-    st.markdown("**💡 注意**: この設定はセッション中のみ有効です。ブラウザを閉じると設定がリセットされます。")
-    st.markdown("**🔧 修正点**: インデントエラー修正 + 確実なSMTP送信方式")
+    summary = {
+        'total_attempted': len(target_companies),
+        'successful_sends': sent_count,
+        'failed_sends': failed_count,
+        'success_rate': (sent_count / len(target_companies)) * 100 if target_companies else 0
+    }
+    
+    st.write(f"### 📊 送信完了")
+    st.write(f"**成功**: {sent_count}/{len(target_companies)} ({summary['success_rate']:.1f}%)")
+    
+    return summary
+
+# ===== 企業データ取得（Google Sheets連携） =====
+def get_companies_from_sheets() -> List[Dict]:
+    """Google Sheetsから企業データを取得"""
+    try:
+        # 既存のGoogle Sheets URL使用
+        sheet_url = "https://docs.google.com/spreadsheets/d/1ySS3zLbEwq3U54pzIRAbKLyhOWR2YdBUSdK_xr_7WNY"
+        csv_url = f"{sheet_url}/export?format=csv&gid=580124806"
+        
+        # データ読み込み
+        df = pd.read_csv(csv_url)
+        
+        # 必要な列のみ抽出・整形
+        companies = []
+        for index, row in df.iterrows():
+            company_data = {
+                'company_id': f"COMP_{index:03d}",
+                'company_name': str(row.get('company_name', '')).strip(),
+                'email': str(row.get('email', '')).strip(),
+                'description': str(row.get('description', '')).strip(),
+                'website': str(row.get('website', '')).strip(),
+                'phone': str(row.get('phone', '')).strip()
+            }
+            
+            # 有効なデータのみ追加
+            if company_data['company_name'] and company_data['email']:
+                companies.append(company_data)
+        
+        st.success(f"✅ Google Sheetsから{len(companies)}社のデータを取得")
+        return companies
+        
+    except Exception as e:
+        st.error(f"Google Sheets接続エラー: {str(e)}")
+        
+        # フォールバックデータ
+        return [
+            {
+                'company_id': 'FUSION_001',
+                'company_name': 'FUSIONDRIVER',
+                'email': 'koji@fusiondriver.biz',
+                'description': 'WiFi solution for construction sites with wireless communication integration',
+                'website': 'https://www.fusiondriver.biz',
+                'phone': ''
+            }
+        ]
+
+# ===== メインUI =====
+def render_integrated_email_system():
+    """統合メールシステムのメインUI"""
+    
+    st.set_page_config(page_title="PicoCELA統合メールシステム", layout="wide")
+    st.title("🌐 PicoCELA統合メールシステム")
+    st.write("**日本語個別生成 + 英語バッチ処理システム**")
+    
+    # サイドバーでモード選択
+    with st.sidebar:
+        st.header("🔧 システム設定")
+        
+        # Gmail設定
+        st.subheader("Gmail設定")
+        gmail_user = st.text_input("Gmailアドレス", value="tokuda@picocela.com")
+        gmail_password = st.text_input("アプリパスワード", type="password", value="bmzr lbrs cbbn jtmr")
+        
+        if gmail_user and gmail_password:
+            gmail_config = {
+                'email': gmail_user,
+                'password': gmail_password,
+                'sender_name': 'PicoCELA Inc.'
+            }
+            st.success("✅ Gmail設定完了")
+        else:
+            gmail_config = None
+            st.warning("⚠️ Gmail設定が必要です")
+        
+        # OpenAI API設定
+        st.subheader("OpenAI API設定")
+        api_key = st.text_input("API Key", type="password")
+        if api_key:
+            openai.api_key = api_key
+            st.success("✅ API設定完了")
+        else:
+            st.warning("⚠️ OpenAI API Keyが必要です")
+    
+    # メインタブ
+    tab1, tab2, tab3, tab4 = st.tabs(["🌍 英語バッチ生成", "📊 生成結果確認", "📤 瞬時送信", "📧 日本語メール"])
+    
+    with tab1:
+        st.subheader("🌍 英語パートナーシップメール バッチ生成")
+        
+        st.write("**ベースメール特徴**:")
+        st.write("- ✅ NASDAQ上場アピール + 技術仕様")
+        st.write("- ✅ パートナーシップ提案（売り込みではない）")
+        st.write("- ✅ 相手事業に特化した環境リスト")
+        st.write("- ✅ 相互価値提案")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            max_companies = st.number_input("生成対象企業数", min_value=1, max_value=1000, value=100)
+        with col2:
+            estimated_cost = max_companies * 0.0004 * 150
+            st.metric("予想コスト", f"約{estimated_cost:.0f}円")
+        
+        if st.button("🚀 英語バッチ生成開始", type="primary") and api_key:
+            companies_data = get_companies_from_sheets()
+            
+            if companies_data:
+                summary = generate_english_emails_batch(companies_data, max_companies)
+                st.session_state['last_batch_summary'] = summary
+            else:
+                st.error("企業データが取得できませんでした")
+    
+    with tab2:
+        st.subheader("📊 生成済みメール確認")
+        
+        db = IntegratedEmailDatabase()
+        conn = sqlite3.connect(db.db_path)
+        df = pd.read_sql_query("""
+            SELECT company_name, language, customization_method, api_cost, generated_at 
+            FROM integrated_emails ORDER BY generated_at DESC
+        """, conn)
+        conn.close()
+        
+        if not df.empty:
+            st.write(f"**生成済みメール**: {len(df)}通")
+            
+            # 言語別フィルター
+            language_filter = st.selectbox("言語フィルター", ["all", "english", "japanese"])
+            if language_filter != "all":
+                df_filtered = df[df['language'] == language_filter]
+            else:
+                df_filtered = df
+            
+            st.dataframe(df_filtered.head(20))
+            
+            # 詳細表示
+            if st.button("サンプルメール表示"):
+                sample_email = db.get_generated_email(df_filtered.iloc[0]['company_name'], 'english')
+                if sample_email:
+                    st.text_area("サンプルメール", sample_email['email_body'], height=400)
+        else:
+            st.warning("生成済みメールがありません")
+    
+    with tab3:
+        st.subheader("📤 事前生成メール瞬時送信")
+        
+        if gmail_config:
+            col1, col2 = st.columns(2)
+            with col1:
+                max_sends = st.number_input("最大送信数", min_value=1, max_value=100, value=20)
+            with col2:
+                language = st.selectbox("送信言語", ["english", "japanese"])
+            
+            if st.button("📤 瞬時送信開始", type="primary"):
+                companies_data = get_companies_from_sheets()
+                
+                if companies_data:
+                    summary = send_pregenerated_emails(companies_data, gmail_config, max_sends, language)
+                    st.session_state['last_send_summary'] = summary
+                else:
+                    st.error("企業データが取得できませんでした")
+        else:
+            st.warning("Gmail設定を完了してください")
+    
+    with tab4:
+        st.subheader("📧 日本語メール（個別生成）")
+        st.write("既存の日本語個別生成システムをここに統合")
+        st.info("日本語メール機能は既存システムを使用してください")
+        
+        # 簡易日本語メール機能（既存システム統合用）
+        if st.button("日本語メール生成テスト"):
+            st.write("日本語個別生成機能は既存のemail_webapp.pyシステムを使用してください")
+
+# ===== 企業データ手動追加機能 =====
+def render_company_data_management():
+    """企業データ手動管理機能"""
+    st.subheader("📝 企業データ管理")
+    
+    with st.expander("➕ 企業データ手動追加"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            new_company_name = st.text_input("企業名")
+            new_email = st.text_input("メールアドレス")
+        
+        with col2:
+            new_description = st.text_area("事業説明", height=100)
+            new_website = st.text_input("ウェブサイト")
+        
+        if st.button("企業を追加") and new_company_name and new_email:
+            # セッション状態に追加
+            if 'manual_companies' not in st.session_state:
+                st.session_state['manual_companies'] = []
+            
+            new_company = {
+                'company_id': f"MANUAL_{len(st.session_state['manual_companies']):03d}",
+                'company_name': new_company_name,
+                'email': new_email,
+                'description': new_description,
+                'website': new_website,
+                'phone': ''
+            }
+            
+            st.session_state['manual_companies'].append(new_company)
+            st.success(f"✅ {new_company_name} を追加しました")
+    
+    # 手動追加済み企業表示
+    if 'manual_companies' in st.session_state and st.session_state['manual_companies']:
+        st.write("**手動追加済み企業:**")
+        for company in st.session_state['manual_companies']:
+            st.write(f"- {company['company_name']} ({company['email']})")
+
+# ===== システム統計表示 =====
+def render_system_statistics():
+    """システム統計表示"""
+    st.subheader("📈 システム統計")
+    
+    db = IntegratedEmailDatabase()
+    conn = sqlite3.connect(db.db_path)
+    
+    # 統計データ取得
+    stats_query = """
+        SELECT 
+            language,
+            customization_method,
+            COUNT(*) as count,
+            SUM(api_cost) as total_cost,
+            AVG(api_cost) as avg_cost
+        FROM integrated_emails 
+        GROUP BY language, customization_method
+    """
+    
+    try:
+        stats_df = pd.read_sql_query(stats_query, conn)
+        
+        if not stats_df.empty:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                total_emails = stats_df['count'].sum()
+                st.metric("総生成数", f"{total_emails}通")
+            
+            with col2:
+                total_cost = stats_df['total_cost'].sum()
+                st.metric("総コスト", f"${total_cost:.3f}")
+            
+            with col3:
+                avg_cost = stats_df['avg_cost'].mean()
+                st.metric("平均コスト", f"${avg_cost:.4f}")
+            
+            # 詳細統計表
+            st.write("**詳細統計:**")
+            st.dataframe(stats_df)
+        else:
+            st.info("まだ生成されたメールがありません")
+            
+    except Exception as e:
+        st.error(f"統計取得エラー: {str(e)}")
+    
+    finally:
+        conn.close()
+
+# ===== 設定管理 =====
+def render_settings_management():
+    """設定管理機能"""
+    st.subheader("⚙️ システム設定")
+    
+    with st.expander("📧 メールテンプレート設定"):
+        st.write("**現在のベースメール特徴:**")
+        st.write("- NASDAQ上場アピール")
+        st.write("- パートナーシップ提案")
+        st.write("- 技術仕様明記")
+        st.write("- 相手事業特化環境リスト")
+        
+        if st.button("テンプレート編集"):
+            st.info("テンプレート編集機能は今後実装予定")
+    
+    with st.expander("🔧 API設定"):
+        st.write("**OpenAI API使用量:**")
+        
+        # 今日の使用量計算
+        db = IntegratedEmailDatabase()
+        conn = sqlite3.connect(db.db_path)
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        usage_query = f"""
+            SELECT COUNT(*) as count, SUM(api_cost) as cost
+            FROM integrated_emails 
+            WHERE date(generated_at) = '{today}'
+        """
+        
+        try:
+            usage_df = pd.read_sql_query(usage_query, conn)
+            if not usage_df.empty and usage_df.iloc[0]['count'] > 0:
+                today_count = usage_df.iloc[0]['count']
+                today_cost = usage_df.iloc[0]['cost'] or 0
+                st.write(f"今日の生成数: {today_count}通")
+                st.write(f"今日のコスト: ${today_cost:.4f}")
+            else:
+                st.write("今日はまだ生成していません")
+        except:
+            st.write("使用量データ取得エラー")
+        finally:
+            conn.close()
+
+# ===== メインアプリケーション =====
+def main():
+    """メインアプリケーション"""
+    
+    # ページ設定
+    st.set_page_config(
+        page_title="PicoCELA統合メールシステム", 
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # タイトル
+    st.title("🌐 PicoCELA統合メールシステム")
+    st.markdown("**日本語個別生成 + 英語バッチ処理システム**")
+    
+    # サイドバー設定
+    with st.sidebar:
+        st.header("🔧 システム設定")
+        
+        # Gmail設定
+        st.subheader("📧 Gmail設定")
+        gmail_user = st.text_input("Gmailアドレス", value="tokuda@picocela.com")
+        gmail_password = st.text_input("アプリパスワード", type="password", 
+                                     help="既存のアプリパスワード: bmzr lbrs cbbn jtmr")
+        
+        # Gmail設定状態
+        if gmail_user and gmail_password:
+            gmail_config = {
+                'email': gmail_user,
+                'password': gmail_password,
+                'sender_name': 'PicoCELA Inc.'
+            }
+            st.success("✅ Gmail設定完了")
+        else:
+            gmail_config = None
+            st.warning("⚠️ Gmail設定が必要です")
+        
+        # OpenAI API設定
+        st.subheader("🤖 OpenAI API設定")
+        api_key = st.text_input("API Key", type="password",
+                               help="GPT-3.5使用のためのAPIキー")
+        
+        if api_key:
+            openai.api_key = api_key
+            st.success("✅ API設定完了")
+        else:
+            st.warning("⚠️ OpenAI API Keyが必要です")
+        
+        # システム統計（サイドバー表示）
+        st.subheader("📊 クイック統計")
+        try:
+            db = IntegratedEmailDatabase()
+            conn = sqlite3.connect(db.db_path)
+            
+            count_query = "SELECT COUNT(*) as total FROM integrated_emails"
+            result = pd.read_sql_query(count_query, conn)
+            total_generated = result.iloc[0]['total'] if not result.empty else 0
+            
+            cost_query = "SELECT SUM(api_cost) as total_cost FROM integrated_emails"
+            cost_result = pd.read_sql_query(cost_query, conn)
+            total_cost = cost_result.iloc[0]['total_cost'] if not cost_result.empty and cost_result.iloc[0]['total_cost'] else 0
+            
+            st.metric("生成済みメール", f"{total_generated}通")
+            st.metric("総使用コスト", f"${total_cost:.3f}")
+            
+            conn.close()
+        except:
+            st.metric("生成済みメール", "0通")
+            st.metric("総使用コスト", "$0.000")
+    
+    # メインコンテンツ
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🌍 英語バッチ生成", 
+        "📊 生成結果確認", 
+        "📤 瞬時送信", 
+        "📝 データ管理", 
+        "⚙️ 設定"
+    ])
+    
+    with tab1:
+        st.subheader("🌍 英語パートナーシップメール バッチ生成")
+        
+        # システム説明
+        with st.expander("ℹ️ システム概要"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**ベースメール特徴:**")
+                st.write("- ✅ NASDAQ上場アピール")
+                st.write("- ✅ 具体的技術仕様（10ホップ、2-3ms遅延）")
+                st.write("- ✅ 数値効果（90%ケーブル削減）")
+                st.write("- ✅ パートナーシップ提案（売り込みではない）")
+            
+            with col2:
+                st.write("**カスタマイズ内容:**")
+                st.write("- 🎯 相手事業に特化した環境リスト")
+                st.write("- 🎯 相互価値提案の最適化")
+                st.write("- 🎯 適切な宛先タイトル選択")
+                st.write("- 🎯 業界理解の証明")
+        
+        # 生成設定
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            max_companies = st.number_input("生成対象企業数", min_value=1, max_value=1000, value=100)
+        with col2:
+            estimated_cost = max_companies * 0.0004 * 150
+            st.metric("予想コスト", f"約{estimated_cost:.0f}円")
+        with col3:
+            estimated_time = max_companies * 2 / 60
+            st.metric("予想時間", f"{estimated_time:.1f}分")
+        
+        # 生成実行
+        if st.button("🚀 英語バッチ生成開始", type="primary") and api_key:
+            if gmail_config:
+                companies_data = get_companies_from_sheets()
+                
+                if companies_data and len(companies_data) > 0:
+                    st.write(f"📋 {len(companies_data)}社のデータを取得しました")
+                    summary = generate_english_emails_batch(companies_data, max_companies)
+                    st.session_state['last_batch_summary'] = summary
+                else:
+                    st.error("❌ 企業データが取得できませんでした")
+            else:
+                st.error("❌ Gmail設定を完了してください")
+        elif not api_key:
+            st.warning("⚠️ OpenAI API Keyを設定してください")
+    
+    with tab2:
+        st.subheader("📊 生成済みメール確認")
+        
+        db = IntegratedEmailDatabase()
+        conn = sqlite3.connect(db.db_path)
+        
+        try:
+            df = pd.read_sql_query("""
+                SELECT company_name, language, customization_method, 
+                       api_cost, generated_at, subject
+                FROM integrated_emails 
+                ORDER BY generated_at DESC
+            """, conn)
+            
+            if not df.empty:
+                st.write(f"**生成済みメール**: {len(df)}通")
+                
+                # フィルター
+                col1, col2 = st.columns(2)
+                with col1:
+                    language_filter = st.selectbox("言語フィルター", ["all", "english", "japanese"])
+                with col2:
+                    method_filter = st.selectbox("生成方法", ["all", "gpt35", "fallback"])
+                
+                # フィルター適用
+                df_filtered = df.copy()
+                if language_filter != "all":
+                    df_filtered = df_filtered[df_filtered['language'] == language_filter]
+                if method_filter != "all":
+                    df_filtered = df_filtered[df_filtered['customization_method'] == method_filter]
+                
+                # データ表示
+                st.dataframe(df_filtered.head(20), use_container_width=True)
+                
+                # サンプルメール表示
+                if len(df_filtered) > 0:
+                    st.subheader("📧 サンプルメール表示")
+                    
+                    selected_company = st.selectbox(
+                        "メール表示する企業を選択",
+                        df_filtered['company_name'].tolist()
+                    )
+                    
+                    if st.button("メール内容を表示"):
+                        sample_email = db.get_generated_email(selected_company, 'english')
+                        if sample_email:
+                            st.write(f"**件名**: {sample_email['subject']}")
+                            st.text_area("メール本文", sample_email['email_body'], height=400)
+                            
+                            # カスタマイズ詳細
+                            with st.expander("カスタマイズ詳細"):
+                                st.write(f"**環境リスト**: {sample_email.get('partnership_environments', 'N/A')}")
+                                st.write(f"**価値提案**: {sample_email.get('partnership_value', 'N/A')}")
+                                st.write(f"**推奨タイトル**: {sample_email.get('suggested_title', 'N/A')}")
+            else:
+                st.warning("⚠️ 生成済みメールがありません。まず「英語バッチ生成」タブで生成してください。")
+                
+        except Exception as e:
+            st.error(f"❌ データベースエラー: {str(e)}")
+        finally:
+            conn.close()
+    
+    with tab3:
+        st.subheader("📤 事前生成メール瞬時送信")
+        
+        if gmail_config:
+            col1, col2 = st.columns(2)
+            with col1:
+                max_sends = st.number_input("最大送信数", min_value=1, max_value=100, value=20)
+            with col2:
+                language = st.selectbox("送信言語", ["english", "japanese"])
+            
+            # 送信可能メール数確認
+            db = IntegratedEmailDatabase()
+            conn = sqlite3.connect(db.db_path)
+            
+            try:
+                available_query = f"""
+                    SELECT COUNT(*) as count 
+                    FROM integrated_emails 
+                    WHERE language = '{language}'
+                """
+                available_df = pd.read_sql_query(available_query, conn)
+                available_count = available_df.iloc[0]['count'] if not available_df.empty else 0
+                
+                st.info(f"📬 送信可能メール数: {available_count}通 ({language})")
+                
+                if available_count > 0:
+                    estimated_send_time = max_sends * 1.1  # 60秒間隔 + 処理時間
+                    st.write(f"⏱️ 予想送信時間: {estimated_send_time:.1f}分")
+                    
+                    if st.button("📤 瞬時送信開始", type="primary"):
+                        companies_data = get_companies_from_sheets()
+                        
+                        if companies_data:
+                            summary = send_pregenerated_emails(companies_data, gmail_config, max_sends, language)
+                            st.session_state['last_send_summary'] = summary
+                        else:
+                            st.error("❌ 企業データが取得できませんでした")
+                else:
+                    st.warning(f"⚠️ {language}メールが生成されていません。まず生成してください。")
+                    
+            except Exception as e:
+                st.error(f"❌ 送信可能数確認エラー: {str(e)}")
+            finally:
+                conn.close()
+        else:
+            st.warning("⚠️ Gmail設定を完了してください")
+    
+    with tab4:
+        render_company_data_management()
+    
+    with tab5:
+        render_settings_management()
+        render_system_statistics()
 
 if __name__ == "__main__":
     main()
