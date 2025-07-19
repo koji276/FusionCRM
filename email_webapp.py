@@ -517,15 +517,15 @@ class IntegratedEmailDatabase:
         conn.commit()
         conn.close()
     
-    def get_generated_email(self, company_id: str, language: str = 'english', template_type: str = 'standard') -> Optional[Dict]:
-        """生成済みメールを取得"""
+    def get_generated_email(self, company_name: str, language: str = 'english', template_type: str = 'standard') -> Optional[Dict]:
+        """生成済みメールを取得（company_nameベース検索に修正）"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute("""
             SELECT * FROM integrated_emails 
-            WHERE company_id = ? AND language = ? AND template_type = ?
-        """, (company_id, language, template_type))
+            WHERE company_name = ? AND language = ? AND template_type = ?
+        """, (company_name, language, template_type))
         
         result = cursor.fetchone()
         conn.close()
@@ -764,7 +764,7 @@ def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict,
         progress_bar.progress(progress)
         status_text.text(f"送信中: {company.get('company_name', 'Unknown')} ({i+1}/{len(target_companies)})")
         
-        # データベースからメール取得
+        # データベースからメール取得 - FIXED: company_nameベースに変更
         company_name = company.get('company_name')
         stored_email = db.get_generated_email(company_name, language, template_type)
         
@@ -1368,13 +1368,6 @@ def main():
                         )
                         
                         col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("💾 変更を保存"):
-                                # 編集内容を保存
-                                stored_email['email_body'] = edited_content
-                                db.save_generated_email(stored_email)
-                                st.success("✅ メール内容を更新しました")
-                        
                         with col2:
                             if st.button("📋 クリップボードにコピー"):
                                 st.code(edited_content)
@@ -1455,14 +1448,9 @@ def main():
                         
                         if companies_data:
                             # 送信間隔を動的に設定
-                            original_function = send_pregenerated_emails
-                            
-                            def custom_send_with_interval(companies, gmail_config, max_emails, language, template_type):
-                                return send_pregenerated_emails_with_interval(
-                                    companies, gmail_config, max_emails, language, template_type, send_interval
-                                )
-                            
-                            summary = custom_send_with_interval(companies_data, gmail_config, max_sends, send_language, send_template)
+                            summary = send_pregenerated_emails_with_interval(
+                                companies_data, gmail_config, max_sends, send_language, send_template, send_interval
+                            )
                             st.session_state['last_send_summary'] = summary
                         else:
                             st.error("❌ 企業データが取得できませんでした")
@@ -1643,9 +1631,9 @@ def send_pregenerated_emails_with_interval(company_list: List[Dict], gmail_confi
             remaining = estimated_total - elapsed
             time_remaining_text.text(f"⏱️ 残り時間: {remaining/60:.1f}分")
         
-        # データベースからメール取得
-        company_id = company.get('company_id')
-        stored_email = db.get_generated_email(company_id, language, template_type)
+        # データベースからメール取得 - FIXED: company_nameベースに変更
+        company_name = company.get('company_name')
+        stored_email = db.get_generated_email(company_name, language, template_type)
         
         if stored_email:
             try:
@@ -1659,8 +1647,8 @@ def send_pregenerated_emails_with_interval(company_list: List[Dict], gmail_confi
                 
                 # 送信履歴保存
                 send_record = {
-                    'company_id': company_id,
-                    'company_name': company.get('company_name'),
+                    'company_id': company.get('company_id', ''),
+                    'company_name': company_name,
                     'recipient_email': company.get('email'),
                     'language': language,
                     'subject': stored_email['subject'],
@@ -1683,8 +1671,8 @@ def send_pregenerated_emails_with_interval(company_list: List[Dict], gmail_confi
                 
                 # エラー履歴保存
                 send_record = {
-                    'company_id': company_id,
-                    'company_name': company.get('company_name'),
+                    'company_id': company.get('company_id', ''),
+                    'company_name': company_name,
                     'recipient_email': company.get('email'),
                     'language': language,
                     'subject': stored_email.get('subject', 'Unknown'),
@@ -1724,4 +1712,11 @@ def send_pregenerated_emails_with_interval(company_list: List[Dict], gmail_confi
     return summary
 
 if __name__ == "__main__":
-    main()
+    main() col1:
+                            if st.button("💾 変更を保存"):
+                                # 編集内容を保存
+                                stored_email['email_body'] = edited_content
+                                db.save_generated_email(stored_email)
+                                st.success("✅ メール内容を更新しました")
+                        
+                        with
