@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-FusionCRM - Streamlit Cloud対応 メール配信システム
-ファイル保存なしでセッション状態のみで動作
+FusionCRM - Streamlit Cloud対応 メール配信システム（完全修正版）
+実際のデータベース接続 + 確実なSMTP送信
 """
 
 import streamlit as st
@@ -11,6 +11,7 @@ import pandas as pd
 import json
 import smtplib
 import time
+import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -30,7 +31,7 @@ if 'setup_completed' not in st.session_state:
     st.session_state.setup_completed = False
 
 class StreamlitEmailWebApp:
-    """Streamlit Cloud対応メール配信Webアプリケーション"""
+    """Streamlit Cloud対応メール配信Webアプリケーション（完全修正版）"""
     
     def __init__(self):
         # ファイルシステムを使わずセッション状態のみで動作
@@ -62,13 +63,16 @@ class StreamlitEmailWebApp:
             return False, f"接続エラー: {str(e)}"
     
     def send_email(self, to_email, company_name, subject, body):
-        """メール送信"""
+        """
+        メール送信（前回成功したSMTP方式）
+        """
         if not self.is_gmail_configured():
             return False, "Gmail設定が無効です"
         
         try:
             config = st.session_state.gmail_config
             
+            # メッセージ作成（前回成功した方式）
             msg = MIMEMultipart()
             msg['From'] = f"{config['sender_name']} <{config['email']}>"
             msg['To'] = to_email
@@ -78,6 +82,7 @@ class StreamlitEmailWebApp:
             formatted_body = body.replace('{company_name}', company_name)
             msg.attach(MIMEText(formatted_body, 'plain', 'utf-8'))
             
+            # SMTP送信（前回成功した設定）
             server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
             server.starttls()
             server.login(config['email'], config['password'])
@@ -90,55 +95,95 @@ class StreamlitEmailWebApp:
             
         except Exception as e:
             return False, f"送信エラー: {str(e)}"
+    
+    def update_company_status(self, company_name, new_status="Contacted"):
+        """企業ステータス更新"""
+        try:
+            conn = sqlite3.connect('fusion_crm.db')
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE companies 
+                SET sales_status = ?, updated_at = datetime('now')
+                WHERE company_name = ?
+            """, (new_status, company_name))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            st.warning(f"ステータス更新エラー: {e}")
+            return False
 
 def get_companies_data():
-    """企業データ取得（サンプルデータ使用）"""
-    # Streamlit Cloudでは外部データベースにアクセスできないため、サンプルデータを使用
-    sample_data = {
-        'id': [1, 2, 3, 4, 5, 6, 7, 8],
-        'company_name': [
-            'テストコンストラクション株式会社',
-            'スマートビルディング合同会社', 
-            'Wyebot',
-            'Delta Electronics (Americas)',
-            'Energous Corporation',
-            'Lyngsoe Systems',
-            'Corvus Robotics, Inc.',
-            'Interlake Mecalux Inc.'
-        ],
-        'email_address': [
-            'contact@test-construction.com',
-            'info@smart-building.co.jp',
-            'contact@wyebot.com',
-            'contact@delta-americas.com',
-            'contact@energous.com',
-            'contact@lyngsoe.com',
-            'contact@corvusrobotics.com',
-            'contact@mecalux.com'
-        ],
-        'website': [
-            'https://test-construction.com',
-            'https://smart-building.co.jp',
-            'https://wyebot.com',
-            'https://delta-americas.com',
-            'https://energous.com',
-            'https://lyngsoe.com',
-            'https://corvusrobotics.com',
-            'https://mecalux.com'
-        ],
-        'status': ['New', 'New', 'New', 'New', 'New', 'New', 'New', 'New'],
-        'picocela_relevance_score': [115, 120, 100, 20, 110, 80, 20, 90]
-    }
-    
-    return pd.DataFrame(sample_data)
+    """
+    実際のFusionCRMデータベースから企業データ取得（修正版）
+    """
+    try:
+        # 実際のデータベースに接続
+        conn = sqlite3.connect('fusion_crm.db')
+        
+        # 実際のテーブル構造に合わせたクエリ
+        query = """
+            SELECT 
+                company_id,
+                company_name, 
+                email,
+                sales_status as status,
+                picoCELA_relevance as picocela_relevance_score,
+                website,
+                phone
+            FROM companies 
+            WHERE email IS NOT NULL 
+            AND email != '' 
+            AND email NOT LIKE '%example%'
+            ORDER BY picoCELA_relevance DESC
+        """
+        
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        
+        # カラム名を統一
+        if 'email' in df.columns:
+            df = df.rename(columns={'email': 'email_address'})
+        
+        st.success(f"✅ データベースから {len(df)}社のデータを取得しました")
+        return df
+        
+    except Exception as e:
+        st.error(f"❌ データベース接続エラー: {e}")
+        
+        # フォールバック：あなたのテスト会社を含むサンプルデータ
+        sample_data = {
+            'company_id': ['ENR_1752888719259_639', 'TEST_001', 'TEST_002'],
+            'company_name': [
+                'FUSIONDRIVER',
+                'テストコンストラクション株式会社',
+                'スマートビルディング合同会社'
+            ],
+            'email_address': [
+                'koji@fusiondriver.biz',
+                'contact@test-construction.com',
+                'info@smart-building.co.jp'
+            ],
+            'website': [
+                'https://www.fusiondriver.biz/home-en.html',
+                'https://test-construction.com',
+                'https://smart-building.co.jp'
+            ],
+            'status': ['New', 'New', 'New'],
+            'picocela_relevance_score': [70, 115, 120]
+        }
+        
+        df = pd.DataFrame(sample_data)
+        st.warning(f"⚠️ フォールバックデータを使用: {len(df)}社")
+        return df
 
 def render_header():
     """ヘッダー"""
     st.title("📧 FusionCRM メール配信システム")
-    st.markdown("**独立メール配信アプリケーション**")
+    st.markdown("**独立メール配信アプリケーション（完全修正版）**")
     
     # メインシステムへのリンク
-    st.info("🔗 [メインシステムに戻る](https://aiplusagents-4j4kitm3mapdvaxkhi3npk.streamlit.app/) （別タブで開く）")
+    st.info("🔗 [メインシステムに戻る](https://automl-3ynrytum8tugw8ytcue7ay.streamlit.app/) （別タブで開く）")
 
 def render_gmail_setup():
     """Gmail設定"""
@@ -166,23 +211,22 @@ def render_gmail_setup():
     
     # 設定フォーム
     with st.expander("🔧 Gmail設定・変更"):
-        st.markdown("### 📋 Googleアプリパスワード取得方法")
-        st.markdown("""
-        1. [Googleアカウント管理](https://myaccount.google.com) → セキュリティ
-        2. 2段階認証プロセスを有効化
-        3. アプリパスワード → メール → その他「FusionCRM」
-        4. 生成された16文字パスワードをコピー
-        """)
+        st.markdown("### 📋 前回成功した設定を使用")
+        st.info("前回の成功設定: tokuda@picocela.com + アプリパスワード")
         
         with st.form("gmail_setup"):
             email = st.text_input(
                 "Gmailアドレス", 
-                value=st.session_state.gmail_config['email'] if app.is_gmail_configured() else "tokuda@picocela.com"
+                value="tokuda@picocela.com"
             )
-            password = st.text_input("アプリパスワード", type="password")
+            password = st.text_input(
+                "アプリパスワード", 
+                type="password",
+                placeholder="bmzr lbrs cbbn jtmr"
+            )
             sender_name = st.text_input(
                 "送信者名", 
-                value=st.session_state.gmail_config['sender_name'] if app.is_gmail_configured() else "PicoCELA Inc."
+                value="PicoCELA Inc."
             )
             
             if st.form_submit_button("💾 設定保存"):
@@ -208,7 +252,7 @@ def render_gmail_setup():
                     st.error("すべての項目を入力してください")
 
 def render_email_campaign():
-    """メール配信"""
+    """メール配信（完全修正版）"""
     st.header("📧 メール配信")
     
     app = StreamlitEmailWebApp()
@@ -217,15 +261,20 @@ def render_email_campaign():
         st.error("❌ Gmail設定が必要です。上記で設定してください。")
         return
     
-    # 企業データ取得
+    # 企業データ取得（実際のDB接続）
     df = get_companies_data()
+    
+    if len(df) == 0:
+        st.error("❌ 配信対象企業が見つかりません")
+        return
     
     # 配信設定
     st.subheader("🎯 配信対象")
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        status_filter = st.selectbox("ステータス", ["全て"] + list(df['status'].unique()))
+        status_options = ["全て"] + list(df['status'].unique()) if 'status' in df.columns else ["全て", "New"]
+        status_filter = st.selectbox("ステータス", status_options)
     with col2:
         min_score = st.number_input("最小スコア", min_value=0, value=0)
     with col3:
@@ -237,7 +286,10 @@ def render_email_campaign():
     if status_filter != "全て":
         filtered_df = filtered_df[filtered_df['status'] == status_filter]
     
-    filtered_df = filtered_df[filtered_df['picocela_relevance_score'] >= min_score]
+    if 'picocela_relevance_score' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['picocela_relevance_score'] >= min_score]
+        filtered_df = filtered_df.sort_values('picocela_relevance_score', ascending=False)
+    
     filtered_df = filtered_df.head(max_count)
     
     st.info(f"📊 配信対象: {len(filtered_df)}社")
@@ -245,7 +297,10 @@ def render_email_campaign():
     if len(filtered_df) > 0:
         # 対象企業表示
         with st.expander("📋 配信対象企業"):
-            st.dataframe(filtered_df[['company_name', 'email_address', 'status', 'picocela_relevance_score']])
+            display_columns = ['company_name', 'email_address', 'status']
+            if 'picocela_relevance_score' in filtered_df.columns:
+                display_columns.append('picocela_relevance_score')
+            st.dataframe(filtered_df[display_columns])
         
         # メール内容
         st.subheader("✉️ メール内容")
@@ -293,48 +348,94 @@ def render_email_campaign():
         # 送信設定
         send_interval = st.slider("送信間隔（秒）", 1, 30, 5)
         
-        # 送信実行
+        # 送信実行（完全修正版）
         if st.button("🚀 メール配信開始", type="primary"):
             if subject and body:
-                if st.checkbox("✅ 配信実行を確認"):
+                confirm_checked = st.checkbox("✅ 配信実行を確認")
+                
+                if confirm_checked:
+                    st.info(f"🚀 {len(filtered_df)}社への配信を開始します...")
                     
+                    # 進捗表示
                     progress_bar = st.progress(0)
                     status_text = st.empty()
+                    results_container = st.container()
                     
                     success_count = 0
                     failed_count = 0
+                    results = []
                     
                     for i, (idx, company) in enumerate(filtered_df.iterrows()):
                         company_name = company['company_name']
                         email_address = company['email_address']
                         
-                        status_text.text(f"送信中: {company_name}")
+                        # 進捗更新
+                        progress = (i + 1) / len(filtered_df)
+                        progress_bar.progress(progress)
+                        status_text.text(f"📧 {i+1}/{len(filtered_df)}. {company_name} ({email_address}) 送信中...")
                         
+                        # メール送信（前回成功したSMTP方式）
                         success, message = app.send_email(email_address, company_name, subject, body)
                         
                         if success:
                             success_count += 1
-                            st.success(f"✅ {company_name} - 送信成功")
+                            status_icon = "✅"
+                            # ステータス更新
+                            app.update_company_status(company_name, "Contacted")
                         else:
                             failed_count += 1
-                            st.error(f"❌ {company_name}: {message}")
+                            status_icon = "❌"
                         
-                        progress_bar.progress((i + 1) / len(filtered_df))
+                        # 結果記録
+                        results.append({
+                            'company': company_name,
+                            'email': email_address,
+                            'status': '成功' if success else '失敗',
+                            'message': message,
+                            'icon': status_icon
+                        })
                         
+                        # リアルタイム結果表示
+                        with results_container:
+                            st.write("📊 **送信結果:**")
+                            for result in results[-3:]:  # 最新3件表示
+                                st.write(f"{result['icon']} {result['company']} - {result['status']}")
+                        
+                        # 送信間隔（最後以外）
                         if i < len(filtered_df) - 1:
-                            time.sleep(send_interval)
+                            delay_variation = random.randint(-1, 2)  # ランダム性追加
+                            actual_delay = max(1, send_interval + delay_variation)
+                            status_text.text(f"⏱️ {actual_delay}秒待機中...")
+                            time.sleep(actual_delay)
                     
+                    # 完了表示
+                    progress_bar.progress(1.0)
                     status_text.success("🎉 配信完了！")
                     
+                    # 最終結果
+                    st.success("📧 メール配信が完了しました！")
+                    
                     col1, col2, col3 = st.columns(3)
-                    col1.metric("送信成功", success_count)
-                    col2.metric("送信失敗", failed_count)
-                    col3.metric("成功率", f"{success_count/(success_count+failed_count)*100:.1f}%" if (success_count+failed_count) > 0 else "0%")
+                    col1.metric("✅ 送信成功", success_count)
+                    col2.metric("❌ 送信失敗", failed_count)
+                    total = success_count + failed_count
+                    success_rate = (success_count / total * 100) if total > 0 else 0
+                    col3.metric("📈 成功率", f"{success_rate:.1f}%")
+                    
+                    # 詳細結果表示
+                    if st.checkbox("📋 詳細結果を表示"):
+                        st.write("**全送信結果:**")
+                        for result in results:
+                            st.write(f"{result['icon']} **{result['company']}** ({result['email']}) - {result['status']}")
+                            if result['status'] == '失敗':
+                                st.write(f"   💬 エラー: {result['message']}")
                 
                 else:
-                    st.warning("確認チェックボックスにチェックしてください")
+                    st.warning("⚠️ 確認チェックボックスにチェックしてください")
             else:
-                st.error("件名と本文を入力してください")
+                st.error("❌ 件名と本文を入力してください")
+    else:
+        st.warning("📭 フィルター条件に一致する企業がありません")
 
 def main():
     """メイン関数"""
@@ -351,6 +452,7 @@ def main():
     # フッター
     st.markdown("---")
     st.markdown("**💡 注意**: この設定はセッション中のみ有効です。ブラウザを閉じると設定がリセットされます。")
+    st.markdown("**🔧 修正点**: 実際のデータベース接続 + 前回成功したSMTP送信方式 + ステータス自動更新")
 
 if __name__ == "__main__":
     main()
