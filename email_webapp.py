@@ -108,7 +108,113 @@ class StreamlitEmailWebApp:
             return False
 
 def get_companies_data():
-    """フォールバックデータを使用（確実に動作）"""
+    """
+    実際のFusionCRMデータベースから企業データ取得（完全版）
+    """
+    try:
+        # 複数のデータベースファイルとテーブル名を試行
+        possible_dbs = ['fusion_crm.db', 'companies.db', 'crm.db', 'data.db', 'fusioncrm.db']
+        possible_tables = ['companies', 'company', 'enterprises', 'clients', 'customers', '企業']
+        
+        for db_file in possible_dbs:
+            if not os.path.exists(db_file):
+                continue
+                
+            try:
+                conn = sqlite3.connect(db_file)
+                cursor = conn.cursor()
+                
+                # 利用可能なテーブル一覧を取得
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                tables = [row[0] for row in cursor.fetchall()]
+                
+                if tables:
+                    st.info(f"📋 {db_file} のテーブル: {tables}")
+                    
+                    # 企業データっぽいテーブルを探す
+                    company_table = None
+                    for table in tables:
+                        if any(keyword in table.lower() for keyword in ['company', 'enterprise', 'client', 'customer', '企業']):
+                            company_table = table
+                            break
+                    
+                    # 見つからない場合は最初のテーブルを試行
+                    if not company_table and tables:
+                        company_table = tables[0]
+                    
+                    if company_table:
+                        st.success(f"✅ テーブル発見: {company_table}")
+                        
+                        # テーブル構造確認
+                        cursor.execute(f"PRAGMA table_info({company_table})")
+                        columns = [col[1] for col in cursor.fetchall()]
+                        st.info(f"📋 {company_table} の列: {columns}")
+                        
+                        # 列名を推測してマッピング
+                        name_cols = [col for col in columns if any(keyword in col.lower() for keyword in ['name', '名前', 'company'])]
+                        email_cols = [col for col in columns if any(keyword in col.lower() for keyword in ['email', 'mail', 'メール'])]
+                        status_cols = [col for col in columns if any(keyword in col.lower() for keyword in ['status', 'state', 'ステータス', '状態'])]
+                        score_cols = [col for col in columns if any(keyword in col.lower() for keyword in ['score', 'relevance', 'priority', 'スコア', '優先'])]
+                        
+                        if name_cols and email_cols:
+                            name_col = name_cols[0]
+                            email_col = email_cols[0]
+                            status_col = status_cols[0] if status_cols else "'New'"
+                            score_col = score_cols[0] if score_cols else "50"
+                            
+                            # データを取得
+                            query = f"""
+                                SELECT 
+                                    {name_col} as company_name,
+                                    {email_col} as email_address,
+                                    {status_col} as status,
+                                    {score_col} as picocela_relevance_score
+                                FROM {company_table}
+                                WHERE {email_col} IS NOT NULL 
+                                AND {email_col} != ''
+                                AND {email_col} NOT LIKE '%example%'
+                                AND {email_col} NOT LIKE '%test%'
+                                ORDER BY {score_col} DESC
+                                LIMIT 50
+                            """
+                            
+                            st.write(f"🔍 実行クエリ: {query}")
+                            
+                            df = pd.read_sql_query(query, conn)
+                            conn.close()
+                            
+                            if len(df) > 0:
+                                st.success(f"✅ {db_file}の{company_table}から {len(df)}社のデータを取得成功")
+                                
+                                # データ品質チェック
+                                valid_emails = df[df['email_address'].str.contains('@', na=False)]
+                                st.info(f"📧 有効なメールアドレス: {len(valid_emails)}件")
+                                
+                                return valid_emails
+                            else:
+                                st.warning(f"⚠️ {company_table}にデータが見つかりません")
+                
+                conn.close()
+                
+            except Exception as db_error:
+                st.warning(f"⚠️ {db_file}の処理エラー: {db_error}")
+                continue
+        
+        # すべてのデータベースで失敗した場合
+        st.error("❌ 有効なデータベースが見つかりません")
+        
+        # 現在の作業ディレクトリとファイル一覧を表示
+        current_dir = os.getcwd()
+        files = os.listdir(current_dir)
+        db_files = [f for f in files if f.endswith('.db')]
+        
+        st.write(f"📁 現在のディレクトリ: {current_dir}")
+        st.write(f"🗃️ 利用可能な.dbファイル: {db_files}")
+        
+    except Exception as e:
+        st.error(f"❌ データベース探索エラー: {e}")
+    
+    # フォールバック：既存のテストデータ
     st.warning("⚠️ フォールバックデータを使用します")
     sample_data = {
         'company_name': [
