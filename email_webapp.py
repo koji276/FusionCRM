@@ -408,7 +408,7 @@ class IntegratedEmailDatabase:
                 customization_method TEXT,
                 template_type TEXT,
                 generated_at TEXT,
-                UNIQUE(company_id, language, template_type) ON CONFLICT REPLACE
+                UNIQUE(company_name, language, template_type) ON CONFLICT REPLACE
             )
         """)
         
@@ -518,7 +518,7 @@ class IntegratedEmailDatabase:
         conn.close()
     
     def get_generated_email(self, company_name: str, language: str = 'english', template_type: str = 'standard') -> Optional[Dict]:
-        """生成済みメールを取得（company_nameベース検索に修正）"""
+        """生成済みメールを取得 - company_nameベース検索に修正"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -746,7 +746,7 @@ def generate_japanese_emails_individual(companies_data: List[Dict], template_typ
 def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict, 
                             max_emails: int = 50, language: str = 'english',
                             template_type: str = 'standard') -> Dict:
-    """事前生成メールの瞬時送信"""
+    """事前生成メールの瞬時送信 - company_nameベース検索に修正"""
     db = IntegratedEmailDatabase()
     
     st.write(f"📤 事前生成{language}メールの送信開始 (最大{max_emails}社)")
@@ -764,7 +764,7 @@ def send_pregenerated_emails(company_list: List[Dict], gmail_config: Dict,
         progress_bar.progress(progress)
         status_text.text(f"送信中: {company.get('company_name', 'Unknown')} ({i+1}/{len(target_companies)})")
         
-        # データベースからメール取得 - FIXED: company_nameベースに変更
+        # データベースからメール取得 - company_nameベース検索に修正
         company_name = company.get('company_name')
         stored_email = db.get_generated_email(company_name, language, template_type)
         
@@ -1368,6 +1368,13 @@ def main():
                         )
                         
                         col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("💾 変更を保存"):
+                                # 編集内容を保存
+                                stored_email['email_body'] = edited_content
+                                db.save_generated_email(stored_email)
+                                st.success("✅ メール内容を更新しました")
+                        
                         with col2:
                             if st.button("📋 クリップボードにコピー"):
                                 st.code(edited_content)
@@ -1603,7 +1610,7 @@ def main():
 def send_pregenerated_emails_with_interval(company_list: List[Dict], gmail_config: Dict, 
                                           max_emails: int = 50, language: str = 'english',
                                           template_type: str = 'standard', send_interval: int = 60) -> Dict:
-    """事前生成メールの瞬時送信（送信間隔カスタマイズ対応）"""
+    """事前生成メールの瞬時送信（送信間隔カスタマイズ対応） - company_nameベース検索に修正"""
     db = IntegratedEmailDatabase()
     
     st.write(f"📤 事前生成{language}メールの送信開始 (間隔: {send_interval}秒)")
@@ -1631,7 +1638,7 @@ def send_pregenerated_emails_with_interval(company_list: List[Dict], gmail_confi
             remaining = estimated_total - elapsed
             time_remaining_text.text(f"⏱️ 残り時間: {remaining/60:.1f}分")
         
-        # データベースからメール取得 - FIXED: company_nameベースに変更
+        # データベースからメール取得 - company_nameベース検索に修正
         company_name = company.get('company_name')
         stored_email = db.get_generated_email(company_name, language, template_type)
         
@@ -1712,11 +1719,4 @@ def send_pregenerated_emails_with_interval(company_list: List[Dict], gmail_confi
     return summary
 
 if __name__ == "__main__":
-    main() col1:
-                            if st.button("💾 変更を保存"):
-                                # 編集内容を保存
-                                stored_email['email_body'] = edited_content
-                                db.save_generated_email(stored_email)
-                                st.success("✅ メール内容を更新しました")
-                        
-                        with
+    main()
