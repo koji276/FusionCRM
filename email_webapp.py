@@ -109,124 +109,116 @@ class StreamlitEmailWebApp:
 
 def get_companies_data():
     """
-    実際のFusionCRMデータベースから企業データ取得（完全版）
+    fusion_crm.dbの詳細調査（デバッグ強化版）
     """
     try:
-        # 複数のデータベースファイルとテーブル名を試行
-        possible_dbs = ['fusion_crm.db', 'companies.db', 'crm.db', 'data.db', 'fusioncrm.db']
-        possible_tables = ['companies', 'company', 'enterprises', 'clients', 'customers', '企業']
+        db_path = 'fusion_crm.db'
         
-        for db_file in possible_dbs:
-            if not os.path.exists(db_file):
-                continue
-                
+        if not os.path.exists(db_path):
+            st.error(f"❌ データベースファイルが見つかりません: {db_path}")
+            return pd.DataFrame()
+        
+        st.info(f"🔍 データベース調査開始: {db_path}")
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. すべてのテーブル一覧を取得
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = [row[0] for row in cursor.fetchall()]
+        st.success(f"📋 発見されたテーブル: {tables}")
+        
+        if not tables:
+            st.error("❌ テーブルが見つかりません")
+            conn.close()
+            return pd.DataFrame()
+        
+        # 2. 各テーブルの詳細調査
+        for table_name in tables:
             try:
-                conn = sqlite3.connect(db_file)
-                cursor = conn.cursor()
+                st.write(f"\n🔍 **テーブル '{table_name}' の調査:**")
                 
-                # 利用可能なテーブル一覧を取得
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                tables = [row[0] for row in cursor.fetchall()]
+                # テーブル構造
+                cursor.execute(f"PRAGMA table_info({table_name})")
+                columns = cursor.fetchall()
+                col_names = [col[1] for col in columns]
+                st.write(f"   📋 列: {col_names}")
                 
-                if tables:
-                    st.info(f"📋 {db_file} のテーブル: {tables}")
+                # レコード数
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                count = cursor.fetchone()[0]
+                st.write(f"   📊 レコード数: {count}")
+                
+                # サンプルデータ（最初の3行）
+                if count > 0:
+                    cursor.execute(f"SELECT * FROM {table_name} LIMIT 3")
+                    sample_data = cursor.fetchall()
+                    st.write(f"   📄 サンプルデータ:")
+                    for i, row in enumerate(sample_data, 1):
+                        st.write(f"      行{i}: {dict(zip(col_names, row))}")
+                
+                # メールアドレスっぽい列があるかチェック
+                email_cols = [col for col in col_names if any(keyword in col.lower() for keyword in ['email', 'mail', 'メール'])]
+                if email_cols:
+                    st.success(f"   ✅ メール列発見: {email_cols}")
                     
-                    # 企業データっぽいテーブルを探す
-                    company_table = None
-                    for table in tables:
-                        if any(keyword in table.lower() for keyword in ['company', 'enterprise', 'client', 'customer', '企業']):
-                            company_table = table
-                            break
+                    # メールアドレスがあるレコード数
+                    email_col = email_cols[0]
+                    cursor.execute(f"SELECT COUNT(*) FROM {table_name} WHERE {email_col} IS NOT NULL AND {email_col} != ''")
+                    email_count = cursor.fetchone()[0]
+                    st.write(f"   📧 メールアドレス有りレコード: {email_count}")
                     
-                    # 見つからない場合は最初のテーブルを試行
-                    if not company_table and tables:
-                        company_table = tables[0]
-                    
-                    if company_table:
-                        st.success(f"✅ テーブル発見: {company_table}")
+                    if email_count > 0:
+                        # 実際のメールアドレスサンプル
+                        cursor.execute(f"SELECT {email_col} FROM {table_name} WHERE {email_col} IS NOT NULL AND {email_col} != '' LIMIT 5")
+                        email_samples = [row[0] for row in cursor.fetchall()]
+                        st.write(f"   📧 メールサンプル: {email_samples}")
                         
-                        # テーブル構造確認
-                        cursor.execute(f"PRAGMA table_info({company_table})")
-                        columns = [col[1] for col in cursor.fetchall()]
-                        st.info(f"📋 {company_table} の列: {columns}")
+                        # このテーブルからデータを取得してみる
+                        company_col = next((col for col in col_names if any(keyword in col.lower() for keyword in ['name', '名前', 'company'])), col_names[0])
                         
-                        # 列名を推測してマッピング
-                        name_cols = [col for col in columns if any(keyword in col.lower() for keyword in ['name', '名前', 'company'])]
-                        email_cols = [col for col in columns if any(keyword in col.lower() for keyword in ['email', 'mail', 'メール'])]
-                        status_cols = [col for col in columns if any(keyword in col.lower() for keyword in ['status', 'state', 'ステータス', '状態'])]
-                        score_cols = [col for col in columns if any(keyword in col.lower() for keyword in ['score', 'relevance', 'priority', 'スコア', '優先'])]
+                        query = f"""
+                            SELECT 
+                                {company_col} as company_name,
+                                {email_col} as email_address,
+                                'New' as status,
+                                50 as picocela_relevance_score
+                            FROM {table_name}
+                            WHERE {email_col} IS NOT NULL 
+                            AND {email_col} != ''
+                            LIMIT 10
+                        """
                         
-                        if name_cols and email_cols:
-                            name_col = name_cols[0]
-                            email_col = email_cols[0]
-                            status_col = status_cols[0] if status_cols else "'New'"
-                            score_col = score_cols[0] if score_cols else "50"
-                            
-                            # データを取得
-                            query = f"""
-                                SELECT 
-                                    {name_col} as company_name,
-                                    {email_col} as email_address,
-                                    {status_col} as status,
-                                    {score_col} as picocela_relevance_score
-                                FROM {company_table}
-                                WHERE {email_col} IS NOT NULL 
-                                AND {email_col} != ''
-                                AND {email_col} NOT LIKE '%example%'
-                                AND {email_col} NOT LIKE '%test%'
-                                ORDER BY {score_col} DESC
-                                LIMIT 50
-                            """
-                            
-                            st.write(f"🔍 実行クエリ: {query}")
-                            
+                        st.write(f"   🔍 テストクエリ: {query}")
+                        
+                        try:
                             df = pd.read_sql_query(query, conn)
-                            conn.close()
+                            st.success(f"   ✅ データ取得成功: {len(df)}件")
                             
-                            if len(df) > 0:
-                                st.success(f"✅ {db_file}の{company_table}から {len(df)}社のデータを取得成功")
-                                
-                                # データ品質チェック
-                                valid_emails = df[df['email_address'].str.contains('@', na=False)]
-                                st.info(f"📧 有効なメールアドレス: {len(valid_emails)}件")
-                                
-                                return valid_emails
-                            else:
-                                st.warning(f"⚠️ {company_table}にデータが見つかりません")
+                            # 取得したデータを表示
+                            st.write("   📊 取得データ:")
+                            st.dataframe(df)
+                            
+                            conn.close()
+                            return df
+                            
+                        except Exception as query_error:
+                            st.error(f"   ❌ クエリエラー: {query_error}")
                 
-                conn.close()
-                
-            except Exception as db_error:
-                st.warning(f"⚠️ {db_file}の処理エラー: {db_error}")
+            except Exception as table_error:
+                st.error(f"❌ テーブル '{table_name}' 調査エラー: {table_error}")
                 continue
         
-        # すべてのデータベースで失敗した場合
-        st.error("❌ 有効なデータベースが見つかりません")
-        
-        # 現在の作業ディレクトリとファイル一覧を表示
-        current_dir = os.getcwd()
-        files = os.listdir(current_dir)
-        db_files = [f for f in files if f.endswith('.db')]
-        
-        st.write(f"📁 現在のディレクトリ: {current_dir}")
-        st.write(f"🗃️ 利用可能な.dbファイル: {db_files}")
+        conn.close()
         
     except Exception as e:
-        st.error(f"❌ データベース探索エラー: {e}")
+        st.error(f"❌ データベース調査エラー: {e}")
     
-    # フォールバック：既存のテストデータ
+    # フォールバック
     st.warning("⚠️ フォールバックデータを使用します")
     sample_data = {
-        'company_name': [
-            'FUSIONDRIVER',
-            'テストコンストラクション株式会社',
-            'スマートビルディング合同会社'
-        ],
-        'email_address': [
-            'koji@fusiondriver.biz',
-            'contact@test-construction.com',
-            'info@smart-building.co.jp'
-        ],
+        'company_name': ['FUSIONDRIVER', 'テストコンストラクション株式会社', 'スマートビルディング合同会社'],
+        'email_address': ['koji@fusiondriver.biz', 'contact@test-construction.com', 'info@smart-building.co.jp'],
         'status': ['New', 'New', 'New'],
         'picocela_relevance_score': [70, 115, 120]
     }
