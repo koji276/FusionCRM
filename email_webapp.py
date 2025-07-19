@@ -115,67 +115,88 @@ class StreamlitEmailWebApp:
 
 def get_companies_data():
     """
-    実際のFusionCRMデータベースから企業データ取得（修正版）
+    実際のFusionCRMデータベースから企業データ取得（データベース探索版）
     """
     try:
-        # 実際のデータベースに接続
-        conn = sqlite3.connect('fusion_crm.db')
+        # 複数のデータベースファイルを試行
+        db_files = ['fusion_crm.db', 'companies.db', 'crm.db', 'data.db']
         
-        # 実際のテーブル構造に合わせたクエリ
-        query = """
-            SELECT 
-                company_id,
-                company_name, 
-                email,
-                sales_status as status,
-                picoCELA_relevance as picocela_relevance_score,
-                website,
-                phone
-            FROM companies 
-            WHERE email IS NOT NULL 
-            AND email != '' 
-            AND email NOT LIKE '%example%'
-            ORDER BY picoCELA_relevance DESC
-        """
+        for db_file in db_files:
+            try:
+                if os.path.exists(db_file):
+                    conn = sqlite3.connect(db_file)
+                    cursor = conn.cursor()
+                    
+                    # 利用可能なテーブル一覧を取得
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                    tables = [row[0] for row in cursor.fetchall()]
+                    st.info(f"📋 {db_file} のテーブル: {tables}")
+                    
+                    # 企業データっぽいテーブルを探す
+                    company_tables = [t for t in tables if any(keyword in t.lower() for keyword in ['company', 'companies', '企業', 'corp', 'business'])]
+                    
+                    if company_tables:
+                        table_name = company_tables[0]
+                        st.success(f"✅ テーブル発見: {table_name}")
+                        
+                        # テーブル構造確認
+                        cursor.execute(f"PRAGMA table_info({table_name})")
+                        columns = [col[1] for col in cursor.fetchall()]
+                        st.info(f"📋 {table_name} の列: {columns}")
+                        
+                        # 動的クエリ構築
+                        name_col = next((col for col in columns if any(keyword in col.lower() for keyword in ['name', '名前', 'company'])), columns[0])
+                        email_col = next((col for col in columns if any(keyword in col.lower() for keyword in ['email', 'mail', 'メール'])), None)
+                        
+                        if email_col:
+                            query = f"""
+                                SELECT 
+                                    {name_col} as company_name,
+                                    {email_col} as email_address,
+                                    'New' as status,
+                                    50 as picocela_relevance_score
+                                FROM {table_name}
+                                WHERE {email_col} IS NOT NULL 
+                                AND {email_col} != ''
+                                LIMIT 10
+                            """
+                            
+                            df = pd.read_sql_query(query, conn)
+                            conn.close()
+                            
+                            if len(df) > 0:
+                                st.success(f"✅ {db_file}の{table_name}から {len(df)}社のデータを取得")
+                                return df
+                    
+                    conn.close()
+            except Exception as e:
+                st.warning(f"⚠️ {db_file}: {e}")
+                continue
         
-        df = pd.read_sql_query(query, conn)
-        conn.close()
-        
-        # カラム名を統一
-        if 'email' in df.columns:
-            df = df.rename(columns={'email': 'email_address'})
-        
-        st.success(f"✅ データベースから {len(df)}社のデータを取得しました")
-        return df
+        # データベースが見つからない場合
+        st.error("❌ 有効なデータベースが見つかりません")
         
     except Exception as e:
-        st.error(f"❌ データベース接続エラー: {e}")
-        
-        # フォールバック：あなたのテスト会社を含むサンプルデータ
-        sample_data = {
-            'company_id': ['ENR_1752888719259_639', 'TEST_001', 'TEST_002'],
-            'company_name': [
-                'FUSIONDRIVER',
-                'テストコンストラクション株式会社',
-                'スマートビルディング合同会社'
-            ],
-            'email_address': [
-                'koji@fusiondriver.biz',
-                'contact@test-construction.com',
-                'info@smart-building.co.jp'
-            ],
-            'website': [
-                'https://www.fusiondriver.biz/home-en.html',
-                'https://test-construction.com',
-                'https://smart-building.co.jp'
-            ],
-            'status': ['New', 'New', 'New'],
-            'picocela_relevance_score': [70, 115, 120]
-        }
-        
-        df = pd.DataFrame(sample_data)
-        st.warning(f"⚠️ フォールバックデータを使用: {len(df)}社")
-        return df
+        st.error(f"❌ データベース探索エラー: {e}")
+    
+    # フォールバック：FUSIONDRIVERを含む確実なテストデータ
+    st.warning("⚠️ フォールバックデータを使用します")
+    sample_data = {
+        'company_name': [
+            'FUSIONDRIVER',
+            'テストコンストラクション株式会社',
+            'スマートビルディング合同会社'
+        ],
+        'email_address': [
+            'koji@fusiondriver.biz',
+            'contact@test-construction.com',
+            'info@smart-building.co.jp'
+        ],
+        'status': ['New', 'New', 'New'],
+        'picocela_relevance_score': [70, 115, 120]
+    }
+    
+    return pd.DataFrame(sample_data)
 
 def render_header():
     """ヘッダー"""
@@ -348,12 +369,47 @@ def render_email_campaign():
         # 送信設定
         send_interval = st.slider("送信間隔（秒）", 1, 30, 5)
         
-        # 送信実行（完全修正版）
-        if st.button("🚀 メール配信開始", type="primary"):
-            if subject and body:
-                confirm_checked = st.checkbox("✅ 配信実行を確認")
-                
-                if confirm_checked:
+        # 送信実行（修正版）
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            confirm_checked = st.checkbox("✅ 配信実行を確認")
+        with col2:
+            send_button = st.button("🚀 メール配信開始", type="primary")
+        
+        # 送信実行（修正版）
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            confirm_checked = st.checkbox("✅ 配信実行を確認")
+        with col2:
+            send_button = st.button("🚀 メール配信開始", type="primary")
+        
+        # デバッグ情報表示
+        if send_button:
+            st.write("🔍 ボタンが押されました")
+            if not subject:
+                st.error("❌ 件名が入力されていません")
+            if not body:
+                st.error("❌ 本文が入力されていません")
+            if not confirm_checked:
+                st.error("❌ 確認チェックボックスがチェックされていません")
+            
+            # Gmail設定確認
+            if not app.is_gmail_configured():
+                st.error("❌ Gmail設定が無効です")
+            else:
+                st.write("✅ Gmail設定OK")
+        
+        if send_button and subject and body and confirm_checked:
+            st.write("🚀 送信処理を開始します...")
+            
+            # Gmail設定を再確認
+            gmail_config = st.session_state.gmail_config
+            st.write(f"📧 送信元: {gmail_config.get('email', 'なし')}")
+            st.write(f"👤 送信者名: {gmail_config.get('sender_name', 'なし')}")
+            
+            if not gmail_config or not gmail_config.get('email'):
+                st.error("❌ Gmail設定が不完全です")
+                return
                     st.info(f"🚀 {len(filtered_df)}社への配信を開始します...")
                     
                     # 進捗表示
