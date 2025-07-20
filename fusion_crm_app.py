@@ -51,13 +51,13 @@ def main():
         if st.button("📧 メールシステムを開く", type="secondary", use_container_width=True):
             # メールシステムの起動
             try:
-                from main_app import main as email_main
+                from email_webapp import main as email_main
                 st.session_state.app_mode = 'email'
                 email_main()
                 return
             except ImportError as e:
                 st.error(f"メールシステム読み込みエラー: {e}")
-                st.info("main_app.py が見つかりません")
+                st.info("email_webapp.py が見つかりません")
     
     # システム状態表示
     st.markdown("---")
@@ -72,7 +72,7 @@ def main():
         st.metric("CRMシステム", status)
     
     with col2:
-        email_exists = os.path.exists("main_app.py")
+        email_exists = os.path.exists("email_webapp.py")
         status = "✅ 利用可能" if email_exists else "❌ ファイルなし"
         st.metric("メールシステム", status)
     
@@ -113,10 +113,10 @@ def main():
         except Exception as e:
             st.error(f"直接実行エラー: {e}")
     
-    if st.button("📧 main_app.py を直接実行"):
+    if st.button("📧 email_webapp.py を直接実行"):
         try:
-            import main_app
-            main_app.main()
+            import email_webapp
+            email_webapp.main()
         except Exception as e:
             st.error(f"直接実行エラー: {e}")
     
@@ -142,7 +142,7 @@ if __name__ == "__main__":
                 st.rerun()
         elif st.session_state.app_mode == 'email':
             try:
-                from main_app import main as email_main
+                from email_webapp import main as email_main
                 email_main()
             except:
                 st.error("メールシステム起動失敗 - メイン選択画面に戻ります")
