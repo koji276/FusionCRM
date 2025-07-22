@@ -62,6 +62,9 @@ def get_companies_from_sheets() -> List[Dict]:
 
 def render_company_data_management():
     """企業データ手動管理機能"""
+    # ✅ 関数内でインポート
+    from email_database import IntegratedEmailDatabase
+
     st.subheader("📝 企業データ管理")
     
     db = IntegratedEmailDatabase()
