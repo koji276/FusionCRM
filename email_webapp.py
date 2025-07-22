@@ -66,7 +66,7 @@ from email_customizers import EnglishEmailCustomizer, JapaneseEmailCustomizer, g
 from email_database import IntegratedEmailDatabase
 from email_sender import send_pregenerated_emails_with_resume
 from batch_processing import generate_english_emails_batch, generate_japanese_emails_individual
-from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
+# from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
 
 
 
