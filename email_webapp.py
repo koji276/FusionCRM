@@ -2,48 +2,7 @@
 統合メールシステム - リファクタリング版メインアプリ
 モジュール分離後のクリーンなメインファイル
 """
-"""
 
-#テストコード
-
-import sys
-import os
-sys.path.append('/mount/src/fusioncrm/modules')
-
-# 1つずつテストインポート
-try:
-    from email_customizers import EnglishEmailCustomizer, JapaneseEmailCustomizer, get_openai_client
-    print("✅ email_customizers - OK")
-except Exception as e:
-    print(f"❌ email_customizers - ERROR: {e}")
-
-try:
-    from email_database import IntegratedEmailDatabase
-    print("✅ email_database - OK")
-except Exception as e:
-    print(f"❌ email_database - ERROR: {e}")
-
-try:
-    from email_sender import send_pregenerated_emails_with_resume
-    print("✅ email_sender - OK")
-except Exception as e:
-    print(f"❌ email_sender - ERROR: {e}")
-
-try:
-    from batch_processing import generate_english_emails_batch, generate_japanese_emails_individual
-    print("✅ batch_processing - OK")
-except Exception as e:
-    print(f"❌ batch_processing - ERROR: {e}")
-
-try:
-    from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
-    print("✅ data_manager - OK")
-except Exception as e:
-    print(f"❌ data_manager - ERROR: {e}")
-
-
-"""
-#ここから本のコード
 import pandas as pd
 import streamlit as st
 from datetime import datetime
@@ -64,7 +23,9 @@ sys.path.append('/mount/src/fusioncrm/modules')
 # モジュールインポート（modules. プレフィックスなし）
 from email_customizers import EnglishEmailCustomizer, JapaneseEmailCustomizer, get_openai_client
 from email_database import IntegratedEmailDatabase
-# from email_sender import send_pregenerated_emails_with_resume
+from email_sender import send_pregenerated_emails_with_resume
+
+'''
 # ✅ 修正版
 try:
     from email_sender import send_pregenerated_emails_with_resume
@@ -75,6 +36,7 @@ except ImportError as e:
     def send_pregenerated_emails_with_resume(*args, **kwargs):
         st.error("メール送信機能は一時的に無効化されています")
         return {}
+'''
 
 from batch_processing import generate_english_emails_batch, generate_japanese_emails_individual
 # from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
