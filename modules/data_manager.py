@@ -8,7 +8,7 @@ import pandas as pd
 from typing import Dict, List
 import streamlit as st
 
-from email_database import IntegratedEmailDatabase
+# from email_database import IntegratedEmailDatabase
 
 
 def get_companies_from_sheets() -> List[Dict]:
