@@ -61,7 +61,12 @@ from batch_processing import generate_english_emails_batch, generate_japanese_em
 from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
 
 """
-
+# ページ設定
+st.set_page_config(
+    page_title="PicoCELA統合メールシステム完全版", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 def render_system_statistics():
     """システム統計表示"""
@@ -517,12 +522,7 @@ def render_send_tab():
 def main():
     """メインアプリケーション"""
     
-    # ページ設定
-    st.set_page_config(
-        page_title="PicoCELA統合メールシステム完全版", 
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
+
     
     # タイトル
     st.title("🌐 PicoCELA統合メールシステム完全版")
