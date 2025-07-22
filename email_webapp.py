@@ -2,6 +2,7 @@
 統合メールシステム - リファクタリング版メインアプリ
 モジュール分離後のクリーンなメインファイル
 """
+"""
 
 #テストコード
 
@@ -48,6 +49,13 @@ import streamlit as st
 from datetime import datetime
 import sqlite3
 
+# ページ設定
+st.set_page_config(
+    page_title="PicoCELA統合メールシステム完全版", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # 一時的回避策: モジュールパスを追加
 import sys
 import os
@@ -60,13 +68,7 @@ from email_sender import send_pregenerated_emails_with_resume
 from batch_processing import generate_english_emails_batch, generate_japanese_emails_individual
 from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
 
-"""
-# ページ設定
-st.set_page_config(
-    page_title="PicoCELA統合メールシステム完全版", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+
 
 def render_system_statistics():
     """システム統計表示"""
