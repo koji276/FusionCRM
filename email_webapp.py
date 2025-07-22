@@ -40,6 +40,8 @@ try:
 except Exception as e:
     print(f"❌ data_manager - ERROR: {e}")
 
+
+"""
 #ここから本のコード
 import pandas as pd
 import streamlit as st
@@ -57,6 +59,8 @@ from email_database import IntegratedEmailDatabase
 from email_sender import send_pregenerated_emails_with_resume
 from batch_processing import generate_english_emails_batch, generate_japanese_emails_individual
 from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
+
+"""
 
 
 def render_system_statistics():
