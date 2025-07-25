@@ -1132,41 +1132,60 @@ class FusionCRMUnified:
 
     # データベース操作メソッド
     def get_all_users(self):
-        """全ユーザーを取得（複数データベース対応）"""
+        """全ユーザーを取得（旧データベース対応）"""
         try:
-            # 複数のデータベースファイルを試行
-            db_paths = [
-                'fusion_users_secure.db',  # セキュア版
-                'fusion_users.db',         # 旧版
-                os.path.join(self.current_dir, 'fusion_users_secure.db'),
-                os.path.join(self.current_dir, 'fusion_users.db')
-            ]
+            # fusion_users.db を優先的に使用
+            db_path = 'fusion_users.db'
             
-            for db_path in db_paths:
-                if os.path.exists(db_path):
-                    conn = sqlite3.connect(db_path)
-                    cursor = conn.cursor()
-                    
-                    # テーブル存在確認
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-                    if cursor.fetchone():
-                        cursor.execute('''
-                        SELECT id, username, email, company_name, role, status, created_at, is_active
-                        FROM users ORDER BY created_at DESC
-                        ''')
-                        
-                        users = cursor.fetchall()
-                        conn.close()
-                        
-                        if users:  # データが見つかった場合
-                            st.info(f"データベース使用中: {db_path}")
-                            return users
-                    
-                    conn.close()
+            if not os.path.exists(db_path):
+                st.warning(f"⚠️ データベースファイル {db_path} が見つかりません")
+                return []
             
-            # すべてのデータベースが空の場合
-            st.warning("⚠️ どのデータベースにもユーザーが見つかりません")
-            return []
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # テーブル構造を確認
+            cursor.execute("PRAGMA table_info(users)")
+            columns = [col[1] for col in cursor.fetchall()]
+            st.info(f"データベース列: {', '.join(columns)}")
+            
+            # 旧データベース構造に対応したクエリ
+            base_query = "SELECT id, username, email"
+            
+            # 存在する列のみ追加
+            if 'company_name' in columns:
+                base_query += ", company_name"
+            else:
+                base_query += ", '' as company_name"
+            
+            if 'role' in columns:
+                base_query += ", role"
+            else:
+                base_query += ", 'user' as role"
+            
+            if 'status' in columns:
+                base_query += ", status"
+            else:
+                base_query += ", 'approved' as status"
+            
+            if 'created_at' in columns:
+                base_query += ", created_at"
+            else:
+                base_query += ", datetime('now') as created_at"
+            
+            if 'is_active' in columns:
+                base_query += ", is_active"
+            else:
+                base_query += ", 1 as is_active"
+            
+            base_query += " FROM users ORDER BY id"
+            
+            cursor.execute(base_query)
+            users = cursor.fetchall()
+            conn.close()
+            
+            st.success(f"✅ {len(users)}名のユーザーを取得しました")
+            return users
             
         except Exception as e:
             st.error(f"データベースエラー: {str(e)}")
@@ -1197,12 +1216,17 @@ class FusionCRMUnified:
         return filtered
 
     def update_user_complete(self, user_id, username, email, company_name, role, status, is_active, new_password=None):
-        """ユーザー情報を完全更新"""
+        """ユーザー情報を完全更新（旧データベース対応）"""
         try:
-            conn = sqlite3.connect(self.auth_system.db_path)
+            db_path = 'fusion_users.db'
+            conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
-            # ユーザー名・メールの重複チェック（自分以外）
+            # テーブル構造を確認
+            cursor.execute("PRAGMA table_info(users)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            # 重複チェック（自分以外）
             cursor.execute('''
             SELECT id FROM users 
             WHERE (username = ? OR email = ?) AND id != ?
@@ -1213,38 +1237,40 @@ class FusionCRMUnified:
                 conn.close()
                 return False, "ユーザー名またはメールアドレスが既に使用されています"
             
-            # パスワード更新の場合
-            if new_password:
-                if hasattr(self.auth_system, 'hash_password'):
-                    password_hash = self.auth_system.hash_password(new_password)
-                else:
-                    # フォールバック用の簡易ハッシュ
-                    import hashlib
-                    password_hash = hashlib.sha256(new_password.encode()).hexdigest()
-                
-                cursor.execute('''
-                UPDATE users 
-                SET username = ?, email = ?, company_name = ?, role = ?, 
-                    status = ?, is_active = ?, password_hash = ?
-                WHERE id = ?
-                ''', (username, email, company_name, role, status, is_active, password_hash, user_id))
-            else:
-                # パスワード変更なし
-                cursor.execute('''
-                UPDATE users 
-                SET username = ?, email = ?, company_name = ?, role = ?, 
-                    status = ?, is_active = ?
-                WHERE id = ?
-                ''', (username, email, company_name, role, status, is_active, user_id))
+            # 基本更新クエリ
+            update_parts = ["username = ?", "email = ?"]
+            params = [username, email]
+            
+            # 存在する列のみ更新
+            if 'company_name' in columns:
+                update_parts.append("company_name = ?")
+                params.append(company_name)
+            
+            if 'role' in columns:
+                update_parts.append("role = ?")
+                params.append(role)
+            
+            if 'is_active' in columns:
+                update_parts.append("is_active = ?")
+                params.append(is_active)
+            
+            # パスワード更新
+            if new_password and 'password_hash' in columns:
+                password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+                update_parts.append("password_hash = ?")
+                params.append(password_hash)
+            
+            params.append(user_id)
+            
+            update_query = f"UPDATE users SET {', '.join(update_parts)} WHERE id = ?"
+            cursor.execute(update_query, params)
             
             conn.commit()
             conn.close()
             return True, "更新完了"
             
-        except sqlite3.IntegrityError as e:
-            return False, f"データベースエラー: {str(e)}"
         except Exception as e:
-            return False, f"システムエラー: {str(e)}"
+            return False, f"更新エラー: {str(e)}"
 
     def update_user_role(self, user_id, role):
         """ユーザー権限を更新"""
@@ -1275,19 +1301,31 @@ class FusionCRMUnified:
             return False
 
     def delete_user(self, user_id):
-        """ユーザーを削除"""
+        """ユーザーを削除（旧データベース対応）"""
         try:
-            conn = sqlite3.connect(self.auth_system.db_path)
+            db_path = 'fusion_users.db'
+            conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
-            # 関連データも削除
-            cursor.execute('DELETE FROM login_logs WHERE user_id = ?', (user_id,))
+            # 削除前にユーザー情報を確認
+            cursor.execute('SELECT username, email FROM users WHERE id = ?', (user_id,))
+            user_info = cursor.fetchone()
+            
+            if not user_info:
+                conn.close()
+                return False
+            
+            # ユーザーを削除
             cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
             
             conn.commit()
             conn.close()
+            
+            st.info(f"削除完了: {user_info[0]} ({user_info[1]})")
             return True
-        except:
+            
+        except Exception as e:
+            st.error(f"削除エラー: {str(e)}")
             return False
 
     def delete_current_user(self):
