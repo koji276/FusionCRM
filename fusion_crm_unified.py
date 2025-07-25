@@ -819,11 +819,57 @@ class FusionCRMUnified:
         """ユーザー管理画面"""
         st.subheader("👥 全ユーザー管理")
         
+        # デバッグ情報表示
+        st.write("**🔍 デバッグ情報**")
+        
+        # 利用可能なデータベースファイルを表示
+        db_files = ['fusion_users_secure.db', 'fusion_users.db']
+        for db_file in db_files:
+            if os.path.exists(db_file):
+                try:
+                    conn = sqlite3.connect(db_file)
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT COUNT(*) FROM users')
+                    count = cursor.fetchone()[0]
+                    conn.close()
+                    st.write(f"✅ {db_file}: {count}名のユーザー")
+                except:
+                    st.write(f"❌ {db_file}: 読み込みエラー")
+            else:
+                st.write(f"⚠️ {db_file}: ファイルなし")
+        
+        st.write("---")
+        
         # ユーザー一覧を取得
         users = self.get_all_users()
         
         if not users:
             st.info("登録ユーザーがいません")
+            
+            # 緊急対応：手動でデータベースを確認
+            st.write("**🚨 緊急対応**")
+            
+            if st.button("全データベースを詳細確認"):
+                db_files = ['fusion_users_secure.db', 'fusion_users.db']
+                for db_file in db_files:
+                    if os.path.exists(db_file):
+                        st.write(f"**{db_file}の内容:**")
+                        try:
+                            conn = sqlite3.connect(db_file)
+                            cursor = conn.cursor()
+                            cursor.execute('SELECT id, username, email, role FROM users')
+                            db_users = cursor.fetchall()
+                            
+                            if db_users:
+                                for user in db_users:
+                                    st.write(f"  ID:{user[0]} | {user[1]} | {user[2]} | {user[3]}")
+                            else:
+                                st.write("  → 空のデータベース")
+                            
+                            conn.close()
+                        except Exception as e:
+                            st.write(f"  → エラー: {e}")
+            
             return
         
         # 検索・フィルター
@@ -1086,20 +1132,44 @@ class FusionCRMUnified:
 
     # データベース操作メソッド
     def get_all_users(self):
-        """全ユーザーを取得"""
+        """全ユーザーを取得（複数データベース対応）"""
         try:
-            conn = sqlite3.connect(self.auth_system.db_path)
-            cursor = conn.cursor()
+            # 複数のデータベースファイルを試行
+            db_paths = [
+                'fusion_users_secure.db',  # セキュア版
+                'fusion_users.db',         # 旧版
+                os.path.join(self.current_dir, 'fusion_users_secure.db'),
+                os.path.join(self.current_dir, 'fusion_users.db')
+            ]
             
-            cursor.execute('''
-            SELECT id, username, email, company_name, role, status, created_at, is_active
-            FROM users ORDER BY created_at DESC
-            ''')
+            for db_path in db_paths:
+                if os.path.exists(db_path):
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    
+                    # テーブル存在確認
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+                    if cursor.fetchone():
+                        cursor.execute('''
+                        SELECT id, username, email, company_name, role, status, created_at, is_active
+                        FROM users ORDER BY created_at DESC
+                        ''')
+                        
+                        users = cursor.fetchall()
+                        conn.close()
+                        
+                        if users:  # データが見つかった場合
+                            st.info(f"データベース使用中: {db_path}")
+                            return users
+                    
+                    conn.close()
             
-            users = cursor.fetchall()
-            conn.close()
-            return users
-        except:
+            # すべてのデータベースが空の場合
+            st.warning("⚠️ どのデータベースにもユーザーが見つかりません")
+            return []
+            
+        except Exception as e:
+            st.error(f"データベースエラー: {str(e)}")
             return []
 
     def filter_users(self, users, search_term, role_filter, status_filter):
