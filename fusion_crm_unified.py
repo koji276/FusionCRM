@@ -163,7 +163,7 @@ class FusionCRMUnified:
         <div style='text-align: center; padding: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; margin-bottom: 2rem;'>
             <h1 style='color: white; margin: 0; font-size: 2.5rem;'>🚀 FusionCRM</h1>
             <p style='color: white; margin: 0.5rem 0 0 0; opacity: 0.9; font-size: 1.2rem;'>統合CRM・メール配信プラットフォーム</p>
-            <p style='color: white; margin: 0; opacity: 0.8;'>年間¥100コストで月商¥150万を実現</p>
+            <p style='color: white; margin: 0; opacity: 0.8;'>効率的な営業活動をサポート</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -196,19 +196,19 @@ class FusionCRMUnified:
         with feature_col1:
             st.markdown("""
             **🏆 実証された成果**
-            - ✅ NASDAQ上場企業副社長から即日返信獲得
-            - ✅ 従来の4倍の返信率を実現
-            - ✅ 年間運用コスト75%削減（¥400→¥100）
-            - ✅ ROI無限大（¥3投資で企業パートナー獲得）
+            - ✅ 高い返信率を実現する効果的なアプローチ
+            - ✅ AIによる業界特化メールカスタマイズ
+            - ✅ 効率的なメール配信システム
+            - ✅ コスト効率に優れた運用が可能
             """)
             
         with feature_col2:
             st.markdown("""
             **🚀 統合機能**
             - 📊 リアルタイム統合ダッシュボード
-            - 🏢 高度企業管理システム (CRM)
-            - 📧 AI powered メール配信システム
-            - 📈 成功パターン分析・レポート
+            - 🏢 企業管理システム (CRM)
+            - 📧 AI搭載メール配信システム
+            - 📈 詳細な分析・レポート機能
             """)
     
     def show_login_form(self):
@@ -312,7 +312,7 @@ class FusionCRMUnified:
         with benefit_col1:
             st.markdown("""
             **無料機能**
-            - ✅ 統合ダッシュボードへのフルアクセス
+            - ✅ 統合ダッシュボードへのアクセス
             - ✅ 企業データ管理（1000社まで）
             - ✅ AIメール生成（月50通まで）
             """)
@@ -322,7 +322,7 @@ class FusionCRMUnified:
             **プレミアム特典**
             - 🚀 無制限メール配信
             - 📊 高度分析レポート
-            - 🎯 優先サポート
+            - 💬 優先サポート
             """)
 
     def show_user_profile(self):
@@ -429,8 +429,8 @@ class FusionCRMUnified:
             ---
             **Version:** v11.0  
             **Last Update:** 2025-07-20  
-            **Status:** Phase 1 Complete ✅  
-            **Cost:** ¥100/年 → ¥150万/月 ROI 🚀
+            **Status:** 安定稼働中 ✅  
+            **System:** 統合プラットフォーム 🚀
             """)
         
         # ページオーバーライドの処理
@@ -461,7 +461,7 @@ class FusionCRMUnified:
             st.markdown(f"### 🏢 {user['company_name']} の統合ダッシュボード")
         
         # 成果サマリー
-        st.markdown("### 🎉 最新開発成果サマリー")
+        st.markdown("### 📊 システム概要")
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -487,36 +487,36 @@ class FusionCRMUnified:
             )
         with col4:
             st.metric(
-                label="年間コスト",
-                value="¥100",
-                delta="75%削減 ↓",
-                delta_color="inverse"
+                label="効率化",
+                value="高速",
+                delta="自動化済み ↑",
+                delta_color="normal"
             )
         
-        # 最新アクティビティ
-        st.markdown("### 🔥 最新アクティビティ")
+        # 主要機能
+        st.markdown("### 🔥 主要機能")
         
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            # 重要な成果
+            # システム機能
             st.markdown("""
-            **🏆 重大成果達成**
-            - ✅ **NASDAQ上場企業副社長**から休日即日返信獲得
-            - ✅ **関連度スコア110点**企業での成功実証  
-            - ✅ **パートナーシップ提案**アプローチの威力実証
-            - ✅ **劇的効率化**: 450社1.5ヶ月 → 50社自動送信
-            - ✅ **コスト革命**: 年間¥400 → ¥100 (75%削減)
+            **🏆 核心機能**
+            - ✅ **企業データ管理**: 効率的な顧客情報管理
+            - ✅ **AI メール生成**: 業界特化したメール自動作成  
+            - ✅ **一括配信システム**: スケーラブルな送信機能
+            - ✅ **返信率向上**: 効果的なアプローチ手法
+            - ✅ **コスト最適化**: 効率的な運用コスト管理
             """)
             
-            # 技術的完成度
+            # 技術的特徴
             st.markdown("""
-            **🔧 技術的完成度**
-            - ✅ メール生成: GPT-3.5による業界特化カスタマイズ **100%**
-            - ✅ データベース: SQLite完全統合 **100%**  
-            - ✅ 送信システム: Gmail統合瞬時送信 **100%**
-            - ✅ エラーハンドリング: フォールバック機能完備 **100%**
-            - ✅ モジュール分離: 保守性・拡張性向上 **100%**
+            **🔧 技術的特徴**
+            - ✅ AIによる業界特化カスタマイズ
+            - ✅ データベース完全統合  
+            - ✅ Gmail統合送信システム
+            - ✅ エラーハンドリング機能完備
+            - ✅ モジュール化設計による高い保守性
             """)
         
         with col2:
@@ -540,33 +540,33 @@ class FusionCRMUnified:
                 st.session_state.page_override = "📈 分析・レポート"
                 st.rerun()
         
-        # 開発ロードマップ
-        st.markdown("### 🎯 開発ロードマップ")
+        # 機能ロードマップ
+        st.markdown("### 🎯 機能ロードマップ")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.markdown("""
-            **Phase 2: システム統合** (進行中)
-            - 🔄 Google Sheets ↔ SQLite 同期
-            - 🔄 統合メインダッシュボード
-            - 🔄 ワークフロー自動化
+            **現在利用可能**
+            - 🔄 統合ダッシュボード
+            - 🔄 企業データ管理
+            - 🔄 AIメール生成・送信
             """)
         
         with col2:
             st.markdown("""
-            **Phase 3: 機能拡張** (今後2週間)
+            **近日公開予定**
             - ⭐ 英語メールテンプレート拡張
             - 🔄 自動返信検知システム
-            - 🔄 Gmail制限対策強化
+            - 🔄 送信制限対策強化
             """)
         
         with col3:
             st.markdown("""
-            **Phase 4: 高度分析** (1-3ヶ月)
-            - 🔮 成約予測AI
-            - 📊 高度分析ダッシュボード
-            - 💰 ROI効果測定
+            **将来予定機能**
+            - 🔮 高度分析機能
+            - 📊 詳細レポートダッシュボード
+            - 💰 ROI分析ツール
             """)
 
     def show_crm_system(self):
@@ -622,13 +622,13 @@ class FusionCRMUnified:
             - ✅ テンプレート管理
             """)
             
-            # 最新の成果表示
+            # 最新の実績表示
             st.markdown("""
-            **🎉 最新実績:**
-            - 🏆 50社自動送信 → 副社長即日返信獲得
-            - 💰 運用コスト: 約¥100/年 (75%削減達成)
-            - ⚡ GPT-3.5実測: $0.0006475/件 (約¥0.1)
-            - 📈 ROI: 無限大 (¥3投資で企業パートナー獲得)
+            **🎉 システムの特長:**
+            - 🏆 効率的なメール配信システム
+            - 💰 コスト効率に優れた運用
+            - ⚡ 高速な処理性能
+            - 📈 高い返信率を実現する仕組み
             """)
         
         with col2:
@@ -665,25 +665,25 @@ class FusionCRMUnified:
             """)
             
             st.markdown("""
-            **2. パートナーシップアプローチ**
-            - ❌ "弊社商品をご検討ください" → 売り込み臭
-            - ✅ "協業の可能性を探りませんか" → win-win感
-            - 📈 **結果: 従来の4倍の返信率**
+            **2. 効果的なアプローチ**
+            - ❌ "商品をご検討ください" → 売り込み感
+            - ✅ "協業の可能性を探りませんか" → 協力関係構築
+            - 📈 **結果: 高い返信率を実現**
             """)
         
         with col2:
             st.markdown("""
-            **3. 米国営業文化への適合**
-            - 返信 = 高い購買意欲 (50%以上)
-            - false positive が極少 (98%がclean rejection)  
-            - **効率性: 日本の28倍効率的**
+            **3. 営業効率の最適化**
+            - 返信 = 高い関心度を示すシグナル
+            - 効率的なフィルタリング機能
+            - **効率性: 大幅な時間短縮を実現**
             """)
             
-            # ROI計算
-            st.markdown("**💰 ROI分析**")
-            st.metric("投資", "¥3", "GPT API費用")
-            st.metric("リターン", "企業パートナー", "NASDAQ副社長返信")
-            st.metric("ROI", "∞ (無限大)", "")
+            # 効果測定
+            st.markdown("**💰 効果測定**")
+            st.metric("時間効率", "大幅改善", "自動化による")
+            st.metric("返信品質", "高品質", "AI最適化")
+            st.metric("運用効率", "向上", "統合システム")
 
     def show_settings(self):
         """システム設定 - 新規実装"""
@@ -712,8 +712,8 @@ class FusionCRMUnified:
             **バージョン情報**
             - Version: **v11.0**
             - 最終更新: **2025年7月20日**
-            - 開発完了度: **Phase 1 (モジュール分離) 100% ✅**
-            - 統合システム: **稼働中 🚀**
+            - システム状態: **安定稼働中 ✅**
+            - 統合プラットフォーム: **運用中 🚀**
             """)
         
         with info_col2:
@@ -722,7 +722,7 @@ class FusionCRMUnified:
             - 統合UI: `fusion_crm_unified.py`
             - CRMシステム: `fusion_crm_main.py`
             - メールシステム: `email_webapp.py`
-            - モジュール: 12ファイル分離済み
+            - モジュール: 12ファイル構成
             """)
 
 def main():
