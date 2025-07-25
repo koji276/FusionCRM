@@ -703,16 +703,65 @@ class FusionCRMUnified:
         
         user = st.session_state.user_info
         
-        # ユーザー設定
-        st.markdown("### 👤 ユーザー設定")
+        # 管理者機能
+        if user.get('role') == 'admin':
+            self.show_admin_panel()
+            st.markdown("---")
         
-        with st.expander("プロフィール編集"):
-            st.text_input("ユーザー名", value=user['username'], disabled=True, help="ユーザー名は変更できません")
-            st.text_input("メールアドレス", value=user['email'])
-            st.text_input("会社名", value=user.get('company_name', ''))
+        # 一般ユーザー設定
+        st.markdown("### 👤 アカウント設定")
+        
+        with st.expander("✏️ 自分の情報を編集", expanded=True):
+            with st.form("edit_profile"):
+                st.write("**📝 プロフィール編集**")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    new_username = st.text_input("ユーザー名", value=user['username'])
+                    new_email = st.text_input("メールアドレス", value=user['email'])
+                
+                with col2:
+                    new_company = st.text_input("会社名", value=user.get('company_name', ''))
+                    new_password = st.text_input("新しいパスワード（変更する場合のみ）", type="password", help="空白の場合は変更しません")
+                
+                update_submitted = st.form_submit_button("💾 プロフィールを更新", type="primary")
+                
+                if update_submitted:
+                    if not new_username.strip():
+                        st.error("ユーザー名は必須です")
+                    elif not new_email.strip() or "@" not in new_email:
+                        st.error("有効なメールアドレスを入力してください")
+                    else:
+                        # プロフィール更新
+                        success, message = self.update_user_complete(
+                            user['id'], new_username.strip(), new_email.strip(), 
+                            new_company.strip(), user['role'], 'approved', 1,
+                            new_password.strip() if new_password.strip() else None
+                        )
+                        
+                        if success:
+                            st.success("✅ プロフィールを更新しました")
+                            # セッション情報を更新
+                            st.session_state.user_info.update({
+                                'username': new_username.strip(),
+                                'email': new_email.strip(),
+                                'company_name': new_company.strip()
+                            })
+                            st.rerun()
+                        else:
+                            st.error(f"❌ 更新に失敗しました: {message}")
+        
+        # アカウント削除セクション
+        with st.expander("🗑️ アカウント削除", expanded=False):
+            st.warning("⚠️ **危険な操作**: この操作は取り消すことができません")
             
-            if st.button("プロフィールを更新"):
-                st.success("プロフィールを更新しました")
+            if st.button("🗑️ アカウント削除", type="secondary"):
+                st.session_state.show_delete_confirmation = True
+        
+        # アカウント削除確認ダイアログ
+        if st.session_state.get('show_delete_confirmation', False):
+            self.show_delete_account_dialog()
         
         # システム情報
         st.markdown("### ℹ️ システム情報")
@@ -736,6 +785,494 @@ class FusionCRMUnified:
             - メールシステム: `email_webapp.py`
             - モジュール: 12ファイル構成
             """)
+
+    def show_admin_panel(self):
+        """管理者パネル"""
+        st.markdown("### 🔒 管理者パネル")
+        
+        # タブで管理機能を分割
+        admin_tab1, admin_tab2, admin_tab3, admin_tab4 = st.tabs([
+            "👥 ユーザー管理", 
+            "📝 承認待ち", 
+            "📧 招待管理", 
+            "📊 システム統計"
+        ])
+        
+        with admin_tab1:
+            self.show_user_management()
+        
+        with admin_tab2:
+            self.show_pending_approvals()
+        
+        with admin_tab3:
+            self.show_invitation_management()
+        
+        with admin_tab4:
+            self.show_system_statistics()
+
+    def show_user_management(self):
+        """ユーザー管理画面"""
+        st.subheader("👥 全ユーザー管理")
+        
+        # ユーザー一覧を取得
+        users = self.get_all_users()
+        
+        if not users:
+            st.info("登録ユーザーがいません")
+            return
+        
+        # 検索・フィルター
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            search_term = st.text_input("🔍 検索", placeholder="ユーザー名またはメール")
+        with col2:
+            role_filter = st.selectbox("権限フィルター", ["すべて", "管理者", "ユーザー"])
+        with col3:
+            status_filter = st.selectbox("状態フィルター", ["すべて", "承認済み", "承認待ち", "無効"])
+        
+        # フィルタリング
+        filtered_users = self.filter_users(users, search_term, role_filter, status_filter)
+        
+        # ユーザー一覧表示
+        for user in filtered_users:
+            user_id, username, email, company, role, status, created_at, is_active = user
+            
+            # 自分自身かどうかをチェック
+            is_current_user = user_id == st.session_state.user_info['id']
+            user_title = f"👤 {username} ({email})" + (" 【あなた】" if is_current_user else "")
+            
+            with st.expander(user_title, expanded=False):
+                
+                # ユーザー情報編集フォーム
+                with st.form(f"edit_user_{user_id}"):
+                    st.write("**📝 ユーザー情報編集**")
+                    
+                    form_col1, form_col2 = st.columns(2)
+                    
+                    with form_col1:
+                        new_username = st.text_input(
+                            "ユーザー名", 
+                            value=username, 
+                            key=f"username_{user_id}",
+                            help="ユーザー名を変更できます"
+                        )
+                        new_email = st.text_input(
+                            "メールアドレス", 
+                            value=email, 
+                            key=f"email_{user_id}",
+                            help="メールアドレスを変更できます"
+                        )
+                        new_company = st.text_input(
+                            "会社名", 
+                            value=company or "", 
+                            key=f"company_{user_id}",
+                            help="会社名を変更できます"
+                        )
+                    
+                    with form_col2:
+                        new_role = st.selectbox(
+                            "権限", 
+                            ["user", "admin"], 
+                            index=1 if role == "admin" else 0,
+                            format_func=lambda x: "👑 管理者" if x == "admin" else "👤 ユーザー",
+                            key=f"role_{user_id}"
+                        )
+                        new_status = st.selectbox(
+                            "承認状態", 
+                            ["approved", "pending"], 
+                            index=0 if status == "approved" else 1,
+                            format_func=lambda x: "✅ 承認済み" if x == "approved" else "⏳ 承認待ち",
+                            key=f"status_{user_id}"
+                        )
+                        new_is_active = st.checkbox(
+                            "アカウント有効", 
+                            value=bool(is_active),
+                            key=f"active_{user_id}"
+                        )
+                    
+                    # パスワード変更セクション
+                    st.write("**🔒 パスワード変更**")
+                    new_password = st.text_input(
+                        "新しいパスワード（変更する場合のみ入力）", 
+                        type="password",
+                        key=f"password_{user_id}",
+                        help="空白の場合はパスワードを変更しません"
+                    )
+                    
+                    # 更新ボタン
+                    update_button = st.form_submit_button(
+                        f"💾 {username} の情報を更新", 
+                        type="primary"
+                    )
+                    
+                    if update_button:
+                        # バリデーション
+                        if not new_username.strip():
+                            st.error("ユーザー名は必須です")
+                        elif not new_email.strip() or "@" not in new_email:
+                            st.error("有効なメールアドレスを入力してください")
+                        else:
+                            # ユーザー情報を更新
+                            success, message = self.update_user_complete(
+                                user_id, new_username.strip(), new_email.strip(), 
+                                new_company.strip(), new_role, new_status, 
+                                new_is_active, new_password.strip() if new_password.strip() else None
+                            )
+                            
+                            if success:
+                                st.success(f"✅ {username} の情報を更新しました")
+                                
+                                # 自分自身の情報を更新した場合はセッション情報も更新
+                                if is_current_user:
+                                    st.session_state.user_info.update({
+                                        'username': new_username.strip(),
+                                        'email': new_email.strip(),
+                                        'company_name': new_company.strip(),
+                                        'role': new_role
+                                    })
+                                
+                                st.rerun()
+                            else:
+                                st.error(f"❌ 更新に失敗しました: {message}")
+                
+                # 現在の情報表示
+                st.write("---")
+                info_col1, info_col2 = st.columns([2, 1])
+                
+                with info_col1:
+                    st.write("**📊 現在の情報**")
+                    st.write(f"**ユーザー名:** {username}")
+                    st.write(f"**メールアドレス:** {email}")
+                    st.write(f"**会社名:** {company or 'なし'}")
+                    st.write(f"**権限:** {'👑 管理者' if role == 'admin' else '👤 ユーザー'}")
+                    st.write(f"**状態:** {'✅ 承認済み' if status == 'approved' else '⏳ 承認待ち'}")
+                    st.write(f"**アクティブ:** {'🟢 有効' if is_active else '🔴 無効'}")
+                    st.write(f"**登録日:** {created_at}")
+                
+                with info_col2:
+                    st.write("**⚠️ 危険操作**")
+                    
+                    # 自分自身は削除できない
+                    if is_current_user:
+                        st.info("自分自身は削除できません")
+                    else:
+                        # ユーザー削除（危険操作）
+                        if st.button(f"🗑️ {username} を削除", key=f"delete_{user_id}", type="secondary"):
+                            st.session_state[f'confirm_delete_{user_id}'] = True
+                
+                # 削除確認ダイアログ（自分以外の場合のみ）
+                if not is_current_user and st.session_state.get(f'confirm_delete_{user_id}', False):
+                    st.error(f"⚠️ 本当に {username} を削除しますか？")
+                    st.write("この操作は取り消せません。")
+                    
+                    col_yes, col_no = st.columns(2)
+                    with col_yes:
+                        if st.button(f"はい、削除します", key=f"confirm_yes_{user_id}", type="primary"):
+                            if self.delete_user(user_id):
+                                st.success(f"ユーザー {username} を削除しました")
+                                del st.session_state[f'confirm_delete_{user_id}']
+                                st.rerun()
+                            else:
+                                st.error("削除に失敗しました")
+                    
+                    with col_no:
+                        if st.button(f"キャンセル", key=f"confirm_no_{user_id}"):
+                            del st.session_state[f'confirm_delete_{user_id}']
+                            st.rerun()
+
+    def show_pending_approvals(self):
+        """承認待ちユーザー管理"""
+        st.subheader("📝 承認待ちユーザー")
+        
+        pending_users = self.get_pending_users()
+        
+        if not pending_users:
+            st.info("承認待ちのユーザーはいません")
+            return
+        
+        for user_id, username, email, company, created_at in pending_users:
+            with st.expander(f"⏳ {username} ({email})"):
+                st.write(f"**メールアドレス:** {email}")
+                st.write(f"**会社名:** {company or 'なし'}")
+                st.write(f"**登録日時:** {created_at}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"✅ 承認", key=f"approve_{user_id}", type="primary"):
+                        if self.approve_user(user_id):
+                            st.success(f"{username} を承認しました")
+                            st.rerun()
+                
+                with col2:
+                    if st.button(f"❌ 拒否", key=f"reject_{user_id}", type="secondary"):
+                        if self.reject_user(user_id):
+                            st.warning(f"{username} を拒否しました")
+                            st.rerun()
+
+    def show_invitation_management(self):
+        """招待管理"""
+        st.subheader("📧 招待管理")
+        
+        with st.form("invite_form"):
+            st.write("**新しい招待を送信**")
+            email = st.text_input("招待するメールアドレス")
+            
+            if st.form_submit_button("招待を送信", type="primary"):
+                if email and "@" in email:
+                    success, result = self.generate_invitation(email)
+                    if success:
+                        # 招待URLを生成
+                        base_url = st.get_option("server.baseUrlPath") or "http://localhost:8501"
+                        invite_url = f"{base_url}?invite={result}"
+                        
+                        st.success("招待を送信しました！")
+                        st.code(f"招待URL: {invite_url}")
+                        st.info("このURLを相手に送信してください（7日間有効）")
+                    else:
+                        st.error(result)
+                else:
+                    st.error("有効なメールアドレスを入力してください")
+
+    def show_system_statistics(self):
+        """システム統計"""
+        st.subheader("📊 システム統計")
+        
+        stats = self.get_system_stats()
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("総ユーザー数", stats.get('total_users', 0))
+        with col2:
+            st.metric("承認待ち", stats.get('pending_users', 0))
+        with col3:
+            st.metric("今日のログイン", stats.get('today_logins', 0))
+        with col4:
+            st.metric("失敗ログイン", stats.get('failed_logins', 0))
+
+    def show_delete_account_dialog(self):
+        """アカウント削除確認ダイアログ"""
+        st.error("⚠️ アカウント削除の確認")
+        st.write("この操作を実行すると、あなたのアカウントとすべてのデータが永久に削除されます。")
+        st.write("この操作は取り消すことができません。")
+        
+        # 確認入力
+        confirm_text = st.text_input(
+            "削除を確認するため「削除します」と入力してください",
+            key="delete_confirmation_text"
+        )
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🗑️ 本当に削除する", type="primary", disabled=(confirm_text != "削除します")):
+                if self.delete_current_user():
+                    st.success("アカウントを削除しました。ご利用ありがとうございました。")
+                    # セッションをクリア
+                    for key in list(st.session_state.keys()):
+                        del st.session_state[key]
+                    st.rerun()
+                else:
+                    st.error("削除に失敗しました")
+        
+        with col2:
+            if st.button("キャンセル"):
+                del st.session_state['show_delete_confirmation']
+                st.rerun()
+
+    # データベース操作メソッド
+    def get_all_users(self):
+        """全ユーザーを取得"""
+        try:
+            conn = sqlite3.connect(self.auth_system.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+            SELECT id, username, email, company_name, role, status, created_at, is_active
+            FROM users ORDER BY created_at DESC
+            ''')
+            
+            users = cursor.fetchall()
+            conn.close()
+            return users
+        except:
+            return []
+
+    def filter_users(self, users, search_term, role_filter, status_filter):
+        """ユーザーをフィルタリング"""
+        filtered = users
+        
+        # 検索フィルター
+        if search_term:
+            filtered = [u for u in filtered if search_term.lower() in u[1].lower() or search_term.lower() in u[2].lower()]
+        
+        # 権限フィルター
+        if role_filter != "すべて":
+            filter_role = "admin" if role_filter == "管理者" else "user"
+            filtered = [u for u in filtered if u[4] == filter_role]
+        
+        # 状態フィルター
+        if status_filter != "すべて":
+            if status_filter == "承認済み":
+                filtered = [u for u in filtered if u[5] == "approved"]
+            elif status_filter == "承認待ち":
+                filtered = [u for u in filtered if u[5] == "pending"]
+            elif status_filter == "無効":
+                filtered = [u for u in filtered if not u[7]]
+        
+        return filtered
+
+    def update_user_complete(self, user_id, username, email, company_name, role, status, is_active, new_password=None):
+        """ユーザー情報を完全更新"""
+        try:
+            conn = sqlite3.connect(self.auth_system.db_path)
+            cursor = conn.cursor()
+            
+            # ユーザー名・メールの重複チェック（自分以外）
+            cursor.execute('''
+            SELECT id FROM users 
+            WHERE (username = ? OR email = ?) AND id != ?
+            ''', (username, email, user_id))
+            
+            duplicate = cursor.fetchone()
+            if duplicate:
+                conn.close()
+                return False, "ユーザー名またはメールアドレスが既に使用されています"
+            
+            # パスワード更新の場合
+            if new_password:
+                if hasattr(self.auth_system, 'hash_password'):
+                    password_hash = self.auth_system.hash_password(new_password)
+                else:
+                    # フォールバック用の簡易ハッシュ
+                    import hashlib
+                    password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+                
+                cursor.execute('''
+                UPDATE users 
+                SET username = ?, email = ?, company_name = ?, role = ?, 
+                    status = ?, is_active = ?, password_hash = ?
+                WHERE id = ?
+                ''', (username, email, company_name, role, status, is_active, password_hash, user_id))
+            else:
+                # パスワード変更なし
+                cursor.execute('''
+                UPDATE users 
+                SET username = ?, email = ?, company_name = ?, role = ?, 
+                    status = ?, is_active = ?
+                WHERE id = ?
+                ''', (username, email, company_name, role, status, is_active, user_id))
+            
+            conn.commit()
+            conn.close()
+            return True, "更新完了"
+            
+        except sqlite3.IntegrityError as e:
+            return False, f"データベースエラー: {str(e)}"
+        except Exception as e:
+            return False, f"システムエラー: {str(e)}"
+
+    def update_user_role(self, user_id, role):
+        """ユーザー権限を更新"""
+        try:
+            conn = sqlite3.connect(self.auth_system.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('UPDATE users SET role = ? WHERE id = ?', (role, user_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except:
+            return False
+
+    def update_user_status(self, user_id, is_active):
+        """ユーザーアクティブ状態を更新"""
+        try:
+            conn = sqlite3.connect(self.auth_system.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('UPDATE users SET is_active = ? WHERE id = ?', (is_active, user_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except:
+            return False
+
+    def delete_user(self, user_id):
+        """ユーザーを削除"""
+        try:
+            conn = sqlite3.connect(self.auth_system.db_path)
+            cursor = conn.cursor()
+            
+            # 関連データも削除
+            cursor.execute('DELETE FROM login_logs WHERE user_id = ?', (user_id,))
+            cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except:
+            return False
+
+    def delete_current_user(self):
+        """現在のユーザーを削除"""
+        user_id = st.session_state.user_info['id']
+        return self.delete_user(user_id)
+
+    def get_pending_users(self):
+        """承認待ちユーザーを取得"""
+        try:
+            conn = sqlite3.connect(self.auth_system.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+            SELECT id, username, email, company_name, created_at
+            FROM users WHERE status = 'pending'
+            ORDER BY created_at DESC
+            ''')
+            
+            users = cursor.fetchall()
+            conn.close()
+            return users
+        except:
+            return []
+
+    def approve_user(self, user_id):
+        """ユーザーを承認"""
+        try:
+            conn = sqlite3.connect(self.auth_system.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+            UPDATE users 
+            SET status = 'approved', is_active = 1, approved_at = CURRENT_TIMESTAMP, approved_by = ?
+            WHERE id = ?
+            ''', (st.session_state.user_info['id'], user_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except:
+            return False
+
+    def reject_user(self, user_id):
+        """ユーザーを拒否"""
+        return self.delete_user(user_id)
+
+    def generate_invitation(self, email):
+        """招待を生成"""
+        try:
+            return self.auth_system.generate_invitation(email, st.session_state.user_info['id'])
+        except:
+            return False, "招待の生成に失敗しました"
+
+    def get_system_stats(self):
+        """システム統計を取得"""
+        try:
+            return self.auth_system.get_system_stats()
+        except:
+            return {}
 
 def main():
     """アプリケーションのメインエントリーポイント"""
