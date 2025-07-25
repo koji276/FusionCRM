@@ -15,6 +15,13 @@ import json
 from datetime import datetime
 import sqlite3
 
+# セキュアな認証システムをインポート
+try:
+    from secure_auth_system import SecureAuthSystem
+    SECURE_AUTH_AVAILABLE = True
+except ImportError:
+    SECURE_AUTH_AVAILABLE = False
+
 # 現在のディレクトリを基準にパスを設定
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
@@ -155,7 +162,12 @@ class FusionCRMUnified:
     def __init__(self):
         """統合システムの初期化"""
         self.current_dir = current_dir
-        self.auth_system = UserAuthSystem()
+        
+        # セキュアな認証システムを使用
+        if SECURE_AUTH_AVAILABLE:
+            self.auth_system = SecureAuthSystem()
+        else:
+            self.auth_system = UserAuthSystem()  # フォールバック
         
     def show_auth_page(self):
         """認証ページ（ログイン・登録）"""
