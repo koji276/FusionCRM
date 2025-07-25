@@ -703,10 +703,10 @@ class FusionCRMUnified:
         
         user = st.session_state.user_info
         
-        # 管理者機能
-        if user.get('role') == 'admin':
-            self.show_admin_panel()
-            st.markdown("---")
+        # 管理者機能（一時的に強制表示）
+        st.markdown("### 🔒 管理者パネル（一時的にアクセス可能）")
+        self.show_admin_panel()
+        st.markdown("---")
         
         # 一般ユーザー設定
         st.markdown("### 👤 アカウント設定")
@@ -787,8 +787,13 @@ class FusionCRMUnified:
             """)
 
     def show_admin_panel(self):
-        """管理者パネル"""
+        """管理者パネル（一時的に権限チェック無効）"""
         st.markdown("### 🔒 管理者パネル")
+        
+        # 一時的に権限チェックをコメントアウト
+        # if st.session_state.get('user_info', {}).get('role') != 'admin':
+        #     st.error("管理者権限が必要です")
+        #     return
         
         # タブで管理機能を分割
         admin_tab1, admin_tab2, admin_tab3, admin_tab4 = st.tabs([
