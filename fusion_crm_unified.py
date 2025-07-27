@@ -469,7 +469,7 @@ class FusionCRMUnified:
             st.info("├── email_webapp.py") 
             st.info("├── modules/ (5ファイル)")
             st.info("└── crm_modules/ (7ファイル)")
-
+            
         # 次のアクション - シンプル版
         st.markdown("**⚡ 次のアクション**")
         
@@ -480,14 +480,26 @@ class FusionCRMUnified:
             st.info("企業データ管理・ステータス追跡")
             
             if st.button("🚀 CRM管理システムを起動", key="launch_crm", use_container_width=True):
-                # 新しい起動コード
+                import subprocess
+                try:
+                    subprocess.Popen(["streamlit", "run", "fusion_crm_main.py", "--server.port", "8502"])
+                    st.success("✅ CRMシステムを起動しました")
+                    st.markdown("🔗 [CRM管理システムを開く](http://localhost:8502)")
+                except Exception as e:
+                    st.error("❌ 起動に失敗しました")
         
         with col2:
             st.markdown("### 📧 メール配信")
             st.info("AI生成・一括配信システム")
             
             if st.button("📧 メール配信システムを起動", key="launch_email", use_container_width=True):
-                # 新しい起動コード
+                import subprocess
+                try:
+                    subprocess.Popen(["streamlit", "run", "email_webapp.py", "--server.port", "8503"])
+                    st.success("✅ メール配信システムを起動しました")
+                    st.markdown("🔗 [メール配信システムを開く](http://localhost:8503)")
+                except Exception as e:
+                    st.error("❌ 起動に失敗しました")
         
         with col3:
             st.markdown("### 📊 システム統合")
