@@ -365,21 +365,7 @@ class FusionCRMUnified:
             initial_sidebar_state="expanded"
         )
         
-        # 一時的に認証をバイパス（緊急復旧用）
-        if True:  # 一時的に強制ログイン
-            # 管理者として強制ログイン
-            st.session_state.authenticated = True
-            st.session_state.user_info = {
-                'id': 2,  # adminのID
-                'username': 'admin',
-                'email': 'koji.tokuda@gmail.com',  # 正しいメールアドレス
-                'company_name': 'FusionCRM',
-                'role': 'admin'
-            }
-            self.show_main_application()
-            return
-        
-        # 認証チェック（通常時）
+        # 認証チェック（正常運用に戻す）
         if not st.session_state.get('authenticated', False):
             self.show_auth_page()
             return
@@ -717,10 +703,10 @@ class FusionCRMUnified:
         
         user = st.session_state.user_info
         
-        # 管理者機能（一時的に強制表示）
-        st.markdown("### 🔒 管理者パネル（一時的にアクセス可能）")
-        self.show_admin_panel()
-        st.markdown("---")
+        # 管理者機能
+        if user.get('role') == 'admin':
+            self.show_admin_panel()
+            st.markdown("---")
         
         # 一般ユーザー設定
         st.markdown("### 👤 アカウント設定")
@@ -801,13 +787,8 @@ class FusionCRMUnified:
             """)
 
     def show_admin_panel(self):
-        """管理者パネル（一時的に権限チェック無効）"""
+        """管理者パネル"""
         st.markdown("### 🔒 管理者パネル")
-        
-        # 一時的に権限チェックをコメントアウト
-        # if st.session_state.get('user_info', {}).get('role') != 'admin':
-        #     st.error("管理者権限が必要です")
-        #     return
         
         # タブで管理機能を分割
         admin_tab1, admin_tab2, admin_tab3, admin_tab4 = st.tabs([
