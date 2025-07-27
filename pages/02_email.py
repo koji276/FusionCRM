@@ -24,7 +24,7 @@ col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
     if st.button("← 統合ダッシュボードに戻る", key="back_to_dashboard"):
         st.switch_page("fusion_crm_unified.py")
-
+    
 # ページヘッダー
 st.markdown("# 📧 メール配信システム")
 st.markdown("### Gmail統合・AI業界特化・一括配信・追跡システム")
