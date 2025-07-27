@@ -372,7 +372,7 @@ class FusionCRMUnified:
             st.session_state.user_info = {
                 'id': 2,  # adminのID
                 'username': 'admin',
-                'email': 'koji.tokua@gmail.com',
+                'email': 'koji.tokuda@gmail.com',  # 正しいメールアドレス
                 'company_name': 'FusionCRM',
                 'role': 'admin'
             }
