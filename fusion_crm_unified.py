@@ -731,8 +731,13 @@ class FusionCRMUnified:
         
         user = st.session_state.user_info
         
-        # 管理者機能
-        if user.get('role') == 'admin':
+        # 管理者機能（新規ユーザー用に一時的に権限チェック緩和）
+        user_role = user.get('role', 'user')
+        user_email = user.get('email', '')
+        
+        # koji.tokuda@gmail.com のユーザーは管理者として扱う
+        if user_email == 'koji.tokuda@gmail.com' or user_role == 'admin':
+            st.info("💡 管理者権限でアクセス中")
             self.show_admin_panel()
             st.markdown("---")
         
