@@ -469,13 +469,13 @@ class FusionCRMUnified:
             st.info("├── email_webapp.py") 
             st.info("├── modules/ (5ファイル)")
             st.info("└── crm_modules/ (7ファイル)")
-            
-            # 次のアクション - Multipage対応
+
+            # 次のアクション - Multipage対応（修正版）
             st.markdown("**⚡ 次のアクション**")
             if st.button("🏢 CRM管理", use_container_width=True):
-                st.switch_page("pages/01_🏢_CRM管理.py")
+                st.switch_page("pages/01_CRM管理.py")
             if st.button("📧 メール送信", use_container_width=True):
-                st.switch_page("pages/02_📧_メール配信.py")
+                st.switch_page("pages/02_メール配信.py")
             if st.button("📈 分析表示", use_container_width=True):
                 st.session_state.page_override = "📈 分析・レポート"
                 st.rerun()
