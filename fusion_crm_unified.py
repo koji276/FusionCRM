@@ -474,30 +474,31 @@ class FusionCRMUnified:
             st.markdown("**⚡ 次のアクション**")
 #            if st.button("🏢 CRM管理", use_container_width=True):
 #                st.switch_page("pages/01_CRM管理.py")  # ← 新しいパス
-if st.button("🏢 CRM管理", use_container_width=True):
-    import os
-    st.write("📁 現在のディレクトリ:", os.getcwd())
-    
-    # pagesディレクトリの確認
-    if os.path.exists("pages"):
-        files = os.listdir("pages")
-        st.write("📂 pagesディレクトリの内容:", files)
-        
-        # 目標ファイルの存在確認
-        target_file = "pages/01_CRM管理.py"
-        if os.path.exists(target_file):
-            st.success(f"✅ ファイル発見: {target_file}")
-            st.switch_page(target_file)
-        else:
-            st.error(f"❌ ファイルが見つかりません: {target_file}")
-            
-            # どのファイルが実際にあるかチェック
-            for file in files:
-                if "CRM" in file:
-                    st.info(f"🔍 CRM関連ファイル発見: {file}")
-    else:
-        st.error("❌ pagesディレクトリが存在しません")
-        st.write("📂 現在のディレクトリの内容:", os.listdir("."))
+
+            if st.button("🏢 CRM管理", use_container_width=True):
+                import os
+                st.write("📁 現在のディレクトリ:", os.getcwd())
+                
+                # pagesディレクトリの確認
+                if os.path.exists("pages"):
+                    files = os.listdir("pages")
+                    st.write("📂 pagesディレクトリの内容:", files)
+                    
+                    # 目標ファイルの存在確認
+                    target_file = "pages/01_CRM管理.py"
+                    if os.path.exists(target_file):
+                        st.success(f"✅ ファイル発見: {target_file}")
+                        st.switch_page(target_file)
+                    else:
+                        st.error(f"❌ ファイルが見つかりません: {target_file}")
+                        
+                        # どのファイルが実際にあるかチェック
+                        for file in files:
+                            if "CRM" in file:
+                                st.info(f"🔍 CRM関連ファイル発見: {file}")
+                else:
+                    st.error("❌ pagesディレクトリが存在しません")
+                    st.write("📂 現在のディレクトリの内容:", os.listdir("."))
         
         # 機能ロードマップ
         st.markdown("### 🎯 機能ロードマップ")
