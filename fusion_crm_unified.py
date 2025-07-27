@@ -470,21 +470,30 @@ class FusionCRMUnified:
             st.info("├── modules/ (5ファイル)")
             st.info("└── crm_modules/ (7ファイル)")
 
-            # 次のアクション - Multipage対応（修正版）
-            st.markdown("**⚡ 次のアクション**")
-            if st.button("🏢 CRM管理", use_container_width=True):
-                # st.switch_page の代わりに直接実行
-                import subprocess
-                import webbrowser
+        # 次のアクション - Multipage対応（修正版）
+        if st.button("🏢 CRM管理", use_container_width=True):
+            import subprocess
+            import time
+            try:
+                # プロセス起動
+                process = subprocess.Popen(
+                    ["streamlit", "run", "pages/01_CRM管理.py", "--server.port", "8502"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
                 
-                # 別プロセスでCRMページを起動
-                try:
-                    subprocess.Popen(["streamlit", "run", "pages/01_CRM管理.py", "--server.port", "8502"])
-                    st.success("🚀 CRM管理システムを起動しました！")
-                    st.info("新しいタブでCRMシステムが開きます")
-                    st.markdown("[🔗 CRM管理システム (ポート8502)](http://localhost:8502)")
-                except Exception as e:
-                    st.error(f"起動エラー: {e}")
+                st.success("🚀 CRM管理システム起動中...")
+                time.sleep(3)  # 3秒待機
+                
+                # プロセス状態確認
+                if process.poll() is None:
+                    st.success("✅ プロセス起動成功")
+                    st.markdown("[🔗 CRM管理システム](http://localhost:8502)")
+                else:
+                    st.error("❌ プロセス起動失敗")
+                    
+            except Exception as e:
+                st.error(f"起動エラー: {e}")
             
             if st.button("📧 メール送信", use_container_width=True):
                 import subprocess
