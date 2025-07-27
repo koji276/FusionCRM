@@ -478,16 +478,16 @@ class FusionCRMUnified:
         with col1:
             st.markdown("### 🏢 CRM管理")
             st.info("企業データ管理・ステータス追跡")
-            st.code("streamlit run fusion_crm_main.py")
-            if st.button("📋 CRM起動コマンドをコピー", key="copy_crm"):
-                st.success("コマンドをクリップボードにコピー!")
+            
+            if st.button("🚀 CRM管理システムを起動", key="launch_crm", use_container_width=True):
+                # 新しい起動コード
         
         with col2:
             st.markdown("### 📧 メール配信")
             st.info("AI生成・一括配信システム")
-            st.code("streamlit run email_webapp.py")
-            if st.button("📋 メール起動コマンドをコピー", key="copy_email"):
-                st.success("コマンドをクリップボードにコピー!")
+            
+            if st.button("📧 メール配信システムを起動", key="launch_email", use_container_width=True):
+                # 新しい起動コード
         
         with col3:
             st.markdown("### 📊 システム統合")
