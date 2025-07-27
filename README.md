@@ -1,9 +1,10 @@
 # 🚀 FusionCRM - PicoCELA統合CRMシステム
 
-PicoCELA社のメッシュネットワーク技術に関連する建設業界パートナー候補の発掘と管理を自動化する統合CRMシステム。**完全クラウド対応Google Sheets版**。
+PicoCELA社のメッシュネットワーク技術に関連する建設業界パートナー候補の発掘と管理を自動化する統合CRMシステム。**完全クラウド対応Google Sheets版 + 統合プラットフォーム**。
 
 ## ✨ 主要機能
 
+* 🚀 **統合プラットフォーム** - 1つの画面でCRM + メール完結
 * 📧 **Gmail統合メール配信システム**
 * 🏢 **企業データ管理（リアルタイム同期）**
 * 📊 **営業活動ダッシュボード**
@@ -11,21 +12,46 @@ PicoCELA社のメッシュネットワーク技術に関連する建設業界パ
 * 📈 **データ分析・レポート**
 * 🆕 **拡張ステータス管理（10段階）**
 * ☁️ **完全クラウドベース（Google Sheets）**
+* 🔐 **セキュア認証システム**
 
-## 🛠️ システム構成
+## 🛠️ システム構成（v12.0統合版）
+
+### 🌟 新しい統合アーキテクチャ
+```
+fusion_crm_unified.py          # 🚀 統合ダッシュボード（メインエントリー）
+├── pages/
+│   ├── 01_🏢_CRM管理.py       # 企業管理システム
+│   └── 02_📧_メール配信.py     # メール配信システム
+├── modules/                   # メール関連モジュール
+│   ├── email_customizers.py
+│   ├── email_database.py
+│   ├── email_sender.py
+│   ├── batch_processing.py
+│   └── data_manager.py
+├── crm_modules/              # CRM関連モジュール
+│   ├── constants.py
+│   ├── google_sheets_api.py
+│   ├── data_processor.py
+│   ├── company_manager.py
+│   ├── crm_dashboard.py
+│   ├── data_import.py
+│   └── ui_components.py
+└── fusion_users.db           # ユーザー認証データベース
+```
 
 ### Core Components
 * **FusionReach**: ENR企業情報自動収集システム（完了）
-* **FusionCRM**: Streamlitベース包括的CRMシステム（Google Sheets版実稼働中）
+* **FusionCRM Unified**: Streamlit Multipage統合プラットフォーム（稼働中）
+* **Legacy Systems**: 個別システム（統合移行中）
 
 ### Technology Stack
 * **Backend**: Python 3.10+ / Google Apps Script
-* **Frontend**: Streamlit
-* **Database**: Google Sheets（リアルタイム同期）
+* **Frontend**: Streamlit Multipage
+* **Database**: Google Sheets（リアルタイム同期）+ SQLite（認証）
 * **Email**: Gmail SMTP
 * **Deployment**: Streamlit Cloud / Google Cloud
 
-## 📦 インストール（5分で完了！）
+## 🚀 クイックスタート（5分で完了！）
 
 ### 1. リポジトリクローン
 ```bash
@@ -38,40 +64,71 @@ cd FusionCRM
 pip install -r requirements.txt
 ```
 
-### 3. Google Apps Script設定
-1. [Google Apps Script](https://script.google.com/)にアクセス
-2. 新しいプロジェクトを作成
-3. `google_apps_script.gs`の内容をコピー&ペースト
-4. デプロイ → 新しいデプロイ → ウェブアプリとして公開
-5. URLをコピー
-
-### 4. Streamlit設定
+### 3. 統合システム起動 🆕
 ```bash
-mkdir -p .streamlit
-echo 'google_apps_script_url = "YOUR_SCRIPT_URL"' > .streamlit/secrets.toml
+# 統合プラットフォームを起動
+streamlit run fusion_crm_unified.py
 ```
 
-### 5. システム起動
+#### または個別システム起動
 ```bash
+# CRM管理のみ
 streamlit run fusion_crm_main.py
+
+# メール配信のみ
+streamlit run email_webapp.py
 ```
 
-または簡単起動スクリプト：
-```bash
-python start_fusioncrm.py
-```
+### 4. 初回ユーザー登録
+1. ブラウザで http://localhost:8501 にアクセス
+2. 「新規ユーザー登録」をクリック
+3. ユーザー情報を入力
+4. 管理者承認後、ログイン可能
+
+## 🎯 使用方法（統合プラットフォーム）
+
+### 📊 統合ダッシュボード
+1. **統合認証システム**: セキュアなログイン・権限管理
+2. **リアルタイム統計**: 企業数・成約率・月次パフォーマンス
+3. **システム状況**: 各コンポーネントの稼働状況表示
+4. **クイックアクション**: CRM管理・メール送信・分析への1クリック移動
+
+### 🏢 CRM管理（pages/01_🏢_CRM管理.py）
+* **企業データ管理**: リアルタイム検索・フィルタリング
+* **10段階ステータス管理**: New → Won まで詳細追跡
+* **PicoCELA関連度スコア**: 自動計算・優先度付け
+* **Google Sheets同期**: チーム全体でリアルタイム共有
+
+### 📧 メール配信（pages/02_📧_メール配信.py）
+* **CRM連携配信**: 企業ステータス別ターゲティング
+* **AI業界特化**: GPT-3.5による自動カスタマイズ
+* **一括送信**: WiFi需要企業への優先配信
+* **送信結果追跡**: 自動ステータス更新
+
+### 🔄 統合ワークフロー 🆕
+1. **CRM画面で企業選定** → 2. **メール画面で一括生成** → 3. **送信実行** → 4. **ステータス自動更新**
 
 ## ⚙️ 初期設定
 
 ### Google Sheets接続
-1. システム起動後、Google Apps Script URLを入力
-2. 「接続テスト」をクリック
-3. 自動的にGoogle Sheetsが作成されます
+1. [Google Apps Script](https://script.google.com/)で新プロジェクト作成
+2. `google_apps_script.gs`の内容をコピー&ペースト
+3. ウェブアプリとして公開・URLコピー
+4. 統合システムの設定画面でURL入力
 
 ### Gmail設定
-1. Gmailアプリパスワードを取得
-2. メールキャンペーンページでGmail認証情報を入力
-3. 接続テストを実行
+1. Gmailアプリパスワード取得
+2. メール配信画面で認証情報入力
+3. 接続テスト実行
+
+### 認証システム設定 🆕
+```bash
+# .streamlit/secrets.toml
+admin_password = "your_admin_password"
+google_apps_script_url = "YOUR_SCRIPT_URL"
+gmail_username = "your_gmail@gmail.com"
+gmail_password = "your_app_password"
+```
 
 ## 📊 データ構造（Google Sheets）
 
@@ -86,99 +143,43 @@ python start_fusioncrm.py
 * `priority_score`: 優先度スコア（0-150）
 * `picocela_relevance_score`: PicoCELA関連度スコア（0-100）
 
-### ステータス履歴シート（status_history）
-* `history_id`: 履歴ID
-* `company_id`: 企業ID
-* `old_status`: 変更前ステータス
-* `new_status`: 変更後ステータス
-* `changed_at`: 変更日時
-* `changed_by`: 変更者
-* `note`: メモ
+### ユーザー管理（SQLite） 🆕
+* `user_id`: ユーザーID
+* `username`: ユーザー名
+* `email`: メールアドレス
+* `password_hash`: パスワードハッシュ
+* `role`: 権限（admin/user）
+* `approved`: 承認状況
+* `created_at`: 作成日時
 
-## 🎯 拡張ステータス（新機能）
+## 🎯 拡張ステータス（10段階）
 
-| ステータス | 説明 | 次のアクション |
-|-----------|------|----------------|
-| New | 新規企業 | 初回連絡 |
-| Contacted | 初回連絡済み | フォローアップ |
-| Replied | 返信あり | ミーティング設定 |
-| **Engaged** 🆕 | 継続対話中 | 現場訪問 |
-| Qualified | 有望企業確定 | 提案書作成 |
-| **Proposal** 🆕 | 提案書提出済み | 検討フォロー |
-| **Negotiation** 🆕 | 契約交渉中 | 条件調整 |
-| **Won** 🆕 | 受注成功 | 導入支援 |
-| Lost | 失注 | 関係維持 |
-| **Dormant** 🆕 | 休眠中 | 再活性化 |
+| ステータス | 説明 | 次のアクション | 自動メール |
+|-----------|------|----------------|------------|
+| New | 新規企業 | 初回連絡 | ✅ 初回提案 |
+| Contacted | 初回連絡済み | フォローアップ | ⏱️ 3日後 |
+| Replied | 返信あり | ミーティング設定 | ✅ ミーティング提案 |
+| **Engaged** 🆕 | 継続対話中 | 現場訪問 | ⏱️ 1週間後 |
+| Qualified | 有望企業確定 | 提案書作成 | ✅ 詳細提案 |
+| **Proposal** 🆕 | 提案書提出済み | 検討フォロー | ⏱️ 2週間後 |
+| **Negotiation** 🆕 | 契約交渉中 | 条件調整 | ✅ 条件調整 |
+| **Won** 🆕 | 受注成功 | 導入支援 | ✅ 導入開始 |
+| Lost | 失注 | 関係維持 | ⏱️ 3ヶ月後 |
+| **Dormant** 🆕 | 休眠中 | 再活性化 | ⏱️ 6ヶ月後 |
 
-## 🎯 使用方法
+## 🔐 セキュリティ・認証システム
 
-### 1. ダッシュボード
-* 企業ステータス分布（10段階表示）
-* WiFi需要企業の自動識別
-* 優先度スコアランキング
-* リアルタイムデータ更新
+### 実装済み機能 🆕
+* **ユーザー登録・認証**: セキュアなパスワード管理
+* **管理者権限システム**: 階層的権限管理
+* **セッション管理**: 安全なログイン状態管理
+* **データベース保護**: SQLインジェクション対策
 
-### 2. 企業管理
-* 企業データの表示・検索・フィルタリング
-* 拡張ステータス管理
-* PicoCELA関連度・優先度スコア確認
-* リアルタイム編集・同期
-
-### 3. メールキャンペーン
-* WiFi需要企業への優先配信
-* ステータス別ターゲティング
-* テンプレート選択・カスタマイズ
-* 一括メール送信実行
-
-### 4. データインポート
-* ENRデータ一括インポート
-* CSV/Excelファイル対応
-* 自動スコアリング実行
-
-## 📧 メールテンプレート
-
-### WiFi需要企業向け
-```
-件名: 建設現場のワイヤレス通信課題解決のご提案 - PicoCELA
-内容: メッシュネットワーク技術による現場通信の革新
-```
-
-### 一般企業向け
-```
-件名: PicoCELA メッシュネットワークソリューションのご案内
-内容: 建設・産業分野向け通信ソリューション
-```
-
-### フォローアップ
-```
-件名: PicoCELAソリューション - フォローアップのご連絡
-内容: 追加質問・相談対応
-```
-
-## 🔧 高度な設定
-
-### 自動スコアリング設定
-```python
-# PicoCELA関連キーワード
-PICOCELA_KEYWORDS = [
-    'network', 'mesh', 'wireless', 'wifi', 'connectivity',
-    'iot', 'smart', 'digital', 'automation', 'sensor'
-]
-
-# 優先度計算
-priority_score = relevance_score + (50 if wifi_required else 0)
-```
-
-### Gmail設定
-```json
-{
-  "smtp_server": "smtp.gmail.com",
-  "smtp_port": 587,
-  "use_tls": true,
-  "daily_limit": 500,
-  "batch_delay": 2
-}
-```
+### 管理者機能
+* **ユーザー管理**: 承認・編集・削除
+* **システム統計**: リアルタイム稼働状況
+* **権限管理**: 管理者昇格・降格
+* **緊急対応**: パスワードリセット・アカウント復旧
 
 ## 📈 プロジェクト進捗
 
@@ -187,61 +188,92 @@ priority_score = relevance_score + (50 if wifi_required else 0)
 * 基本CRM機能実装
 * Gmail統合完了
 
-### Phase 2: Google Sheets移行 ✅ 🆕
-* SQLiteから完全移行
-* リアルタイム同期実装
-* 拡張ステータス追加
-* チーム共有機能実装
+### Phase 1.5: 統合基盤構築 ✅ 🆕
+* **統合認証システム**: セキュア認証・管理者パネル
+* **Multipage構成**: ページ分離・ナビゲーション統合
+* **モジュール分離**: 保守性・拡張性向上
+* **データベース互換性**: 新旧システム完全連携
 
-### Phase 3: スケールアップ 🔄
-* ENRデータ完全統合
-* 自動化機能強化
-* 分析機能拡充
+### Phase 2: 実機能統合 🔄 **現在進行中**
+* **CRM機能統合**: fusion_crm_main.py → 統合画面
+* **メール機能統合**: email_webapp.py → 統合画面
+* **データ統合**: Google Sheets ↔ SQLite 双方向同期
+* **ワークフロー自動化**: 企業選定 → メール生成 → 送信
 
-## 📊 実績データ
+### Phase 3: 機能拡張 📅 **今後2週間**
+* **英語メールテンプレート拡張**
+* **自動返信検知システム**
+* **Gmail制限対策強化**
 
-### FusionReach成果
-* **処理実績**: 150社（309社中の48.5%）
-* **URL発見率**: 約85%
-* **メール取得率**: 約90%
-* **PicoCELA関連企業**: 複数社特定
-
-### システム安定性（Google Sheets版）
-* **稼働状況**: ✅ 24時間365日稼働
-* **同時アクセス**: 10ユーザーまで対応
-* **データ同期**: リアルタイム
-* **コスト**: 完全無料（Google無料枠）
+### Phase 4: 高度分析 📅 **1-3ヶ月以内**
+* **成約予測AI**
+* **高度分析ダッシュボード**
+* **効果測定機能**
 
 ## 🌐 クラウドアーキテクチャ
 
-### 現在の構成 🆕
+### 統合システム構成 🆕
 ```
-Streamlit Cloud
-    ↓
-Google Apps Script API
-    ↓
-Google Sheets（データベース）
-    ↓
-リアルタイム同期 → チーム全員
+Streamlit Cloud (fusion_crm_unified.py)
+├── Multipage Navigation
+│   ├── 📊 統合ダッシュボード
+│   ├── 🏢 CRM管理
+│   └── 📧 メール配信
+├── Authentication System (SQLite)
+└── Data Layer
+    ├── Google Sheets (CRM Data)
+    ├── Google Apps Script API
+    └── Gmail SMTP
 ```
 
 ### メリット
-* サーバー管理不要
-* 自動バックアップ（Google Drive）
-* どこからでもアクセス可能
-* 完全無料運用
+* **1つの画面で完結**: CRM + メール管理
+* **セキュア認証**: ユーザー管理・権限制御
+* **リアルタイム同期**: チーム全体データ共有
+* **完全無料運用**: Google無料枠活用
 
-## 🔮 将来展望
+## 📊 実績データ
 
-### 機能拡張計画
-* **AIスコアリング**: 機械学習による優先度予測
-* **自動フォローアップ**: ステータス別自動メール
-* **高度な分析**: 成約予測・パイプライン最適化
+### 営業成果（実証済み）
+* **50社自動送信** → **副社長即日返信獲得**
+* **NASDAQ上場企業副社長**からの休日即日返信
+* **関連度スコア110点企業**での成功実証
+* **パートナーシップ提案アプローチ**の威力実証
 
-### ビジネス展開
-* **目標**: 建設業界CRMのスタンダード
-* **展開**: PicoCELAパートナー企業への提供
-* **収益化**: SaaS型サービスとして展開
+### 効率化実績
+* **従来**: 450社DM作成に1.5ヶ月（300時間）
+* **現在**: 50社自動送信（待機のみ）
+* **ROI**: 効率的な営業活動を実現
+
+## 💡 戦略的考慮事項
+
+### スケーラビリティ対応
+* **現在**: Google Sheets（~1万社対応可能）
+* **将来選択肢**:
+  * SQLite復活 + ファイルベースDBホスティング
+  * 低コストクラウドDB（Railway.app/Render.com等）
+  * ハイブリッド構成（Google Sheets + SQLite併用）
+* **AWS回避**: コスト最適化戦略（月額$10-30 vs AWS $50+）
+
+## 🔗 システムURL
+
+### 稼働中システム
+* **統合プラットフォーム**: [fusion_crm_unified.py] - メイン統合システム
+* **CRMシステム**: [fusion_crm_main.py] - 企業管理システム  
+* **メールシステム**: [email_webapp.py] - メール配信システム
+* **GitHub**: https://github.com/koji276/FusionCRM
+
+## 🎯 今後のNext Actions
+
+### 今週完了目標
+1. **CRM機能統合**: fusion_crm_main.pyの機能を統合画面に実装
+2. **メール機能統合**: email_webapp.pyの機能を統合画面に実装  
+3. **統合テスト**: 全機能の動作確認
+
+### 今月達成目標
+1. **完全統合システム**: 1つの画面でCRM + メール操作
+2. **1000社対応**: 本格的な英語メール配信開始
+3. **商用化準備**: FusionCRM Pro ローンチ準備完了
 
 ## 🏆 開発チーム
 
@@ -256,14 +288,16 @@ Google Sheets（データベース）
 ## 🆘 サポート
 
 ### トラブルシューティング
-1. **接続エラー**: Google Apps Script URLを確認
-2. **Gmail接続エラー**: アプリパスワード再設定
-3. **データ同期エラー**: Google Sheetsの共有設定確認
+1. **統合システム接続エラー**: 認証情報・ポート確認
+2. **CRM連携エラー**: Google Apps Script URL確認
+3. **メール送信エラー**: Gmail認証・制限確認
+4. **認証エラー**: ユーザー承認状況・権限確認
 
 ### よくある質問
-* **Q: データ容量制限は？** A: Google無料枠で1000万セルまで
-* **Q: 同時編集可能？** A: はい、リアルタイム同期対応
-* **Q: バックアップは？** A: Google Driveで自動保存
+* **Q: 統合システムとは？** A: 1つの画面でCRM+メール管理できる新システム
+* **Q: 既存システムは使える？** A: はい、個別起動も可能です
+* **Q: データは同期される？** A: 統合システムで完全同期予定
+* **Q: セキュリティは？** A: ユーザー認証・権限管理実装済み
 
 ### 連絡先
 * **Email**: tokuda@picocela.com
@@ -272,7 +306,14 @@ Google Sheets（データベース）
 
 ## 📅 更新履歴
 
-### v2.0.0 (2025-01-XX) 🆕
+### v12.0 (2025-07-27) 🆕 **統合プラットフォーム完成**
+* ✅ **統合認証システム**: セキュア認証・管理者パネル実装
+* ✅ **Multipage構成**: ページ分離・統合ナビゲーション
+* ✅ **モジュール分離**: 完全モジュール化・保守性向上
+* ✅ **データベース互換性**: 新旧システム完全連携
+* 🔄 **実機能統合**: CRM + メール機能統合（進行中）
+
+### v2.0.0 (2025-01-XX)
 * ✅ Google Sheets完全移行
 * ✅ 拡張ステータス（10段階）実装
 * ✅ リアルタイム同期対応
@@ -285,4 +326,4 @@ Google Sheets（データベース）
 
 ---
 
-## 🚀 FusionCRM - Powering PicoCELA's Business Growth with Cloud Technology
+## 🚀 FusionCRM v12.0 - 革新的統合プラットフォームで営業活動を変革
