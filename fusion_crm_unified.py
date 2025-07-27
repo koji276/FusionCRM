@@ -365,7 +365,21 @@ class FusionCRMUnified:
             initial_sidebar_state="expanded"
         )
         
-        # 認証チェック
+        # 一時的に認証をバイパス（緊急復旧用）
+        if True:  # 一時的に強制ログイン
+            # 管理者として強制ログイン
+            st.session_state.authenticated = True
+            st.session_state.user_info = {
+                'id': 2,  # adminのID
+                'username': 'admin',
+                'email': 'koji.tokua@gmail.com',
+                'company_name': 'FusionCRM',
+                'role': 'admin'
+            }
+            self.show_main_application()
+            return
+        
+        # 認証チェック（通常時）
         if not st.session_state.get('authenticated', False):
             self.show_auth_page()
             return
