@@ -249,6 +249,34 @@ class FusionCRMUnified:
                 else:
                     st.warning("ユーザー名とパスワードを入力してください")
         
+        # 緊急パスワードリセット
+        st.markdown("---")
+        st.markdown("### 🚨 緊急パスワードリセット")
+        
+        with st.expander("管理者パスワードを忘れた場合"):
+            st.warning("⚠️ 緊急時のみ使用してください")
+            
+            with st.form("emergency_reset"):
+                st.write("管理者アカウントのパスワードをリセットします")
+                new_password = st.text_input("新しいパスワード", type="password")
+                confirm_password = st.text_input("パスワード確認", type="password")
+                
+                reset_button = st.form_submit_button("🔑 パスワードリセット", type="secondary")
+                
+                if reset_button:
+                    if new_password and new_password == confirm_password:
+                        if len(new_password) >= 4:
+                            success = self.reset_admin_password(new_password)
+                            if success:
+                                st.success("✅ 管理者パスワードがリセットされました！")
+                                st.info(f"新しいパスワード: {new_password}")
+                            else:
+                                st.error("❌ パスワードリセットに失敗しました")
+                        else:
+                            st.error("パスワードは4文字以上で入力してください")
+                    else:
+                        st.error("パスワードが一致しません")
+        
         # デモアカウント
         st.markdown("---")
         st.info("**🎭 デモアカウント**: demo / demo123 でお試しいただけます")
@@ -1375,12 +1403,37 @@ class FusionCRMUnified:
         except:
             return False, "招待の生成に失敗しました"
 
-    def get_system_stats(self):
-        """システム統計を取得"""
+    def reset_admin_password(self, new_password):
+        """管理者パスワードをリセット"""
         try:
-            return self.auth_system.get_system_stats()
-        except:
-            return {}
+            db_path = 'fusion_users.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # 管理者アカウントを確認
+            cursor.execute('SELECT id FROM users WHERE username = "admin"')
+            admin_user = cursor.fetchone()
+            
+            if not admin_user:
+                conn.close()
+                return False
+            
+            admin_id = admin_user[0]
+            
+            # パスワードをハッシュ化（旧データベース形式）
+            password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+            
+            # パスワードを更新
+            cursor.execute('UPDATE users SET password_hash = ? WHERE id = ?', (password_hash, admin_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+            
+        except Exception as e:
+            st.error(f"リセットエラー: {str(e)}")
+            return False
 
 def main():
     """アプリケーションのメインエントリーポイント"""
