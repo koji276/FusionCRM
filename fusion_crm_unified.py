@@ -472,9 +472,6 @@ class FusionCRMUnified:
 
             # 次のアクション - Multipage対応（修正版）
             st.markdown("**⚡ 次のアクション**")
-#            if st.button("🏢 CRM管理", use_container_width=True):
-#                st.switch_page("pages/01_CRM管理.py")  # ← 新しいパス
-
             if st.button("🏢 CRM管理", use_container_width=True):
                 # st.switch_page の代わりに直接実行
                 import subprocess
@@ -499,8 +496,10 @@ class FusionCRMUnified:
                 except Exception as e:
                     st.error(f"起動エラー: {e}")
             
-
-
+            # 分析レポートボタンを追加
+            if st.button("📈 分析表示", use_container_width=True):
+                st.session_state.page_override = "📈 分析・レポート"
+                st.rerun()
         
         # 機能ロードマップ
         st.markdown("### 🎯 機能ロードマップ")
