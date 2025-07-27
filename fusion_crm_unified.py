@@ -488,6 +488,19 @@ class FusionCRMUnified:
                     st.markdown("[🔗 CRM管理システム (ポート8502)](http://localhost:8502)")
                 except Exception as e:
                     st.error(f"起動エラー: {e}")
+            
+            if st.button("📧 メール送信", use_container_width=True):
+                import subprocess
+                try:
+                    subprocess.Popen(["streamlit", "run", "pages/02_メール配信.py", "--server.port", "8503"])
+                    st.success("📧 メール配信システムを起動しました！")
+                    st.info("新しいタブでメール配信システムが開きます")
+                    st.markdown("[🔗 メール配信システム (ポート8503)](http://localhost:8503)")
+                except Exception as e:
+                    st.error(f"起動エラー: {e}")
+            
+
+
         
         # 機能ロードマップ
         st.markdown("### 🎯 機能ロードマップ")
