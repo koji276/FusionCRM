@@ -470,45 +470,18 @@ class FusionCRMUnified:
             st.info("├── modules/ (5ファイル)")
             st.info("└── crm_modules/ (7ファイル)")
 
-        # 次のアクション - Multipage対応（修正版）
+        # 次のアクション - シンプル版
+        st.markdown("**⚡ 次のアクション**")
+        
         if st.button("🏢 CRM管理", use_container_width=True):
-            import subprocess
-            import time
-            try:
-                # プロセス起動
-                process = subprocess.Popen(
-                    ["streamlit", "run", "pages/01_CRM管理.py", "--server.port", "8502"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                
-                st.success("🚀 CRM管理システム起動中...")
-                time.sleep(3)  # 3秒待機
-                
-                # プロセス状態確認
-                if process.poll() is None:
-                    st.success("✅ プロセス起動成功")
-                    st.markdown("[🔗 CRM管理システム](http://localhost:8502)")
-                else:
-                    st.error("❌ プロセス起動失敗")
-                    
-            except Exception as e:
-                st.error(f"起動エラー: {e}")
-            
-            if st.button("📧 メール送信", use_container_width=True):
-                import subprocess
-                try:
-                    subprocess.Popen(["streamlit", "run", "pages/02_メール配信.py", "--server.port", "8503"])
-                    st.success("📧 メール配信システムを起動しました！")
-                    st.info("新しいタブでメール配信システムが開きます")
-                    st.markdown("[🔗 メール配信システム (ポート8503)](http://localhost:8503)")
-                except Exception as e:
-                    st.error(f"起動エラー: {e}")
-            
-            # 分析レポートボタンを追加
-            if st.button("📈 分析表示", use_container_width=True):
-                st.session_state.page_override = "📈 分析・レポート"
-                st.rerun()
+            st.switch_page("pages/01_CRM管理.py")
+        
+        if st.button("📧 メール送信", use_container_width=True):
+            st.switch_page("pages/02_メール配信.py")
+        
+        if st.button("📈 分析表示", use_container_width=True):
+            st.session_state.page_override = "📈 分析・レポート"
+            st.rerun()
         
         # 機能ロードマップ
         st.markdown("### 🎯 機能ロードマップ")
