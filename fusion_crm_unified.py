@@ -470,7 +470,7 @@ class FusionCRMUnified:
             st.info("├── modules/ (5ファイル)")
             st.info("└── crm_modules/ (7ファイル)")
 
-        # 次のアクション - シンプル版
+        # 次のアクション - 直接リンク版
         st.markdown("**⚡ 次のアクション**")
         
         col1, col2, col3 = st.columns(3)
@@ -478,21 +478,28 @@ class FusionCRMUnified:
         with col1:
             st.markdown("### 🏢 CRM管理")
             st.info("企業データ管理・ステータス追跡")
-            st.code("streamlit run fusion_crm_main.py")
-            if st.button("📋 CRM起動コマンドをコピー", key="copy_crm"):
-                st.success("コマンドをクリップボードにコピー!")
-        
-        with col2:
-            st.markdown("### 📧 メール配信")
-            st.info("AI生成・一括配信システム")
-            st.code("streamlit run email_webapp.py")
-            if st.button("📋 メール起動コマンドをコピー", key="copy_email"):
-                st.success("コマンドをクリップボードにコピー!")
-        
-        with col3:
-            st.markdown("### 📊 システム統合")
-            st.warning("🚧 開発中")
-            st.caption("まずは軽量化 → 統合の順序で進行")
+            if st.button("🚀 CRM管理を開く", key="open_crm", use_container_width=True):
+                st.markdown("**新しいブラウザタブで以下のURLを開いてください:**")
+                st.code("http://localhost:8502")
+                # バックグラウンドで起動を試行
+                import subprocess
+                try:
+                    subprocess.Popen(["streamlit", "run", "fusion_crm_main.py", "--server.port", "8502"])
+                except:
+                    pass
+
+with col2:
+    st.markdown("### 📧 メール配信")
+    st.info("AI生成・一括配信システム")
+    if st.button("📧 メール配信を開く", key="open_email", use_container_width=True):
+        st.markdown("**新しいブラウザタブで以下のURLを開いてください:**")
+        st.code("http://localhost:8503")
+        # バックグラウンドで起動を試行
+        import subprocess
+        try:
+            subprocess.Popen(["streamlit", "run", "email_webapp.py", "--server.port", "8503"])
+        except:
+            pass
         
         # 使用方法の説明
         st.markdown("---")
