@@ -1207,6 +1207,57 @@ class FusionCRMUnified:
                 st.rerun()
 
     # データベース操作メソッド
+    def promote_to_admin(self, user_id):
+        """ユーザーを管理者に昇格"""
+        try:
+            db_path = 'fusion_users.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # ユーザーを管理者に変更
+            cursor.execute('UPDATE users SET role = ? WHERE id = ?', ('admin', user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+            
+        except Exception as e:
+            st.error(f"昇格エラー: {str(e)}")
+            return False
+
+    def reset_admin_password(self, new_password):
+        """管理者パスワードをリセット"""
+        try:
+            db_path = 'fusion_users.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # 管理者アカウントを確認
+            cursor.execute('SELECT id FROM users WHERE username = "admin"')
+            admin_user = cursor.fetchone()
+            
+            if not admin_user:
+                conn.close()
+                return False
+            
+            admin_id = admin_user[0]
+            
+            # パスワードをハッシュ化（旧データベース形式）
+            password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+            
+            # パスワードを更新
+            cursor.execute('UPDATE users SET password_hash = ? WHERE id = ?', (password_hash, admin_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+            
+        except Exception as e:
+            st.error(f"リセットエラー: {str(e)}")
+            return False
+
     def get_all_users(self):
         """全ユーザーを取得（旧データベース対応）"""
         try:
@@ -1504,6 +1555,46 @@ class FusionCRMUnified:
         except Exception as e:
             st.error(f"リセットエラー: {str(e)}")
             return False
+
+    def get_system_stats(self):
+        """システム統計を取得（旧データベース対応）"""
+        try:
+            db_path = 'fusion_users.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # 総ユーザー数
+            cursor.execute('SELECT COUNT(*) FROM users')
+            total_users = cursor.fetchone()[0]
+            
+            # 承認待ち（status列がない場合は0）
+            try:
+                cursor.execute('SELECT COUNT(*) FROM users WHERE status = "pending"')
+                pending_users = cursor.fetchone()[0]
+            except:
+                pending_users = 0
+            
+            # 今日のログイン（ログテーブルがない場合は0）
+            today_logins = 0
+            failed_logins = 0
+            
+            conn.close()
+            
+            return {
+                'total_users': total_users,
+                'pending_users': pending_users,
+                'today_logins': today_logins,
+                'failed_logins': failed_logins
+            }
+            
+        except Exception as e:
+            st.error(f"統計取得エラー: {str(e)}")
+            return {
+                'total_users': 0,
+                'pending_users': 0,
+                'today_logins': 0,
+                'failed_logins': 0
+            }
 
 def main():
     """アプリケーションのメインエントリーポイント"""
