@@ -533,34 +533,34 @@ class FusionCRMUnified:
             st.info("🔄 統合システム: 段階的実装中")
             st.caption("軽量化 → 統合")
                 
-                # 機能ロードマップ
-                st.markdown("### 🎯 機能ロードマップ")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.markdown("""
-                    **現在利用可能**
-                    - 🔄 統合ダッシュボード
-                    - 🔄 企業データ管理
-                    - 🔄 AIメール生成・送信
-                    """)
-                
-                with col2:
-                    st.markdown("""
-                    **近日公開予定**
-                    - ⭐ 英語メールテンプレート拡張
-                    - 🔄 自動返信検知システム
-                    - 🔄 送信制限対策強化
-                    """)
-                
-                with col3:
-                    st.markdown("""
-                    **将来予定機能**
-                    - 🔮 高度分析機能
-                    - 📊 詳細レポートダッシュボード
-                    - 💰 ROI分析ツール
-                    """)
+        # 機能ロードマップ
+        st.markdown("### 🎯 機能ロードマップ")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            **現在利用可能**
+            - 🔄 統合ダッシュボード
+            - 🔄 企業データ管理
+            - 🔄 AIメール生成・送信
+            """)
+        
+        with col2:
+            st.markdown("""
+            **近日公開予定**
+            - ⭐ 英語メールテンプレート拡張
+            - 🔄 自動返信検知システム
+            - 🔄 送信制限対策強化
+            """)
+        
+        with col3:
+            st.markdown("""
+            **将来予定機能**
+            - 🔮 高度分析機能
+            - 📊 詳細レポートダッシュボード
+            - 💰 ROI分析ツール
+            """)
 
     def show_crm_system(self):
         """CRMシステム表示"""
