@@ -1,4 +1,43 @@
-"""
+def reset_admin_password(self, new_password):    def get_system_stats(self):
+        """システム統計を取得（旧データベース対応）"""
+        try:
+            db_path = 'fusion_users.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # 総ユーザー数
+            cursor.execute('SELECT COUNT(*) FROM users')
+            total_users = cursor.fetchone()[0]
+            
+            # 承認待ち（status列がない場合は0）
+            try:
+                cursor.execute('SELECT COUNT(*) FROM users WHERE status = "pending"')
+                pending_users = cursor.fetchone()[0]
+            except:
+                pending_users = 0
+            
+            # 今日のログイン（ログテーブルがない場合は0）
+            today_logins = 0
+            failed_logins = 0
+            
+            conn.close()
+            
+            return {
+                'total_users': total_users,
+                'pending_users': pending_users,
+                'today_logins': today_logins,
+                'failed_logins': failed_logins
+            }
+            
+        except Exception as e:
+            st.error(f"統計取得エラー: {str(e)}")
+            return {
+                'total_users': 0,
+                'pending_users': 0,
+                'today_logins': 0,
+                'failed_logins': 0
+            }        # 一般ユーザー設定
+        st.markdown("### 👤 アカウント設定")"""
 FusionCRM統合システム - メインエントリーポイント（認証機能付き）
 既存の3つのシステムを統合したユニファイドインターフェース + ユーザー登録・認証
 
@@ -731,18 +770,27 @@ class FusionCRMUnified:
         
         user = st.session_state.user_info
         
-        # 管理者機能（新規ユーザー用に一時的に権限チェック緩和）
+        # 管理者昇格機能（新規ユーザー向け）
+        if user_email == 'koji.tokuda@gmail.com' and user_role != 'admin':
+            with st.expander("🚀 管理者権限を取得"):
+                st.write("あなたのアカウントを管理者に昇格させますか？")
+                if st.button("👑 管理者に昇格", type="primary"):
+                    if self.promote_to_admin(user['id']):
+                        st.success("✅ 管理者に昇格しました！")
+                        # セッション情報を更新
+                        st.session_state.user_info['role'] = 'admin'
+                        st.rerun()
+                    else:
+                        st.error("❌ 昇格に失敗しました")
+        
+        # 管理者機能
         user_role = user.get('role', 'user')
         user_email = user.get('email', '')
         
-        # koji.tokuda@gmail.com のユーザーは管理者として扱う
-        if user_email == 'koji.tokuda@gmail.com' or user_role == 'admin':
-            st.info("💡 管理者権限でアクセス中")
+        if user_role == 'admin':
+            st.success("👑 管理者としてログイン中")
             self.show_admin_panel()
             st.markdown("---")
-        
-        # 一般ユーザー設定
-        st.markdown("### 👤 アカウント設定")
         
         with st.expander("✏️ 自分の情報を編集", expanded=True):
             with st.form("edit_profile"):
@@ -1408,7 +1456,24 @@ class FusionCRMUnified:
         except:
             return False, "招待の生成に失敗しました"
 
-    def reset_admin_password(self, new_password):
+    def promote_to_admin(self, user_id):
+        """ユーザーを管理者に昇格"""
+        try:
+            db_path = 'fusion_users.db'
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            # ユーザーを管理者に変更
+            cursor.execute('UPDATE users SET role = ? WHERE id = ?', ('admin', user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+            
+        except Exception as e:
+            st.error(f"昇格エラー: {str(e)}")
+            return False
         """管理者パスワードをリセット"""
         try:
             db_path = 'fusion_users.db'
