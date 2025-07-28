@@ -563,7 +563,7 @@ class FusionCRMUnified:
             - 📊 詳細レポートダッシュボード
             - 💰 ROI分析ツール
             """)
-
+    
     def show_crm_page(self):
         """CRM管理画面"""
         st.title("🏢 CRM管理システム")
@@ -573,53 +573,28 @@ class FusionCRMUnified:
             st.session_state.current_view = 'dashboard'
             st.rerun()
         
-        st.info("CRM機能をここに実装します（準備中）")
-    
-    # ✅ 正しいインデント
-    def show_email_page(self):
-        """メール配信画面"""
-        st.title("📧 メール配信システム")
+        st.info("💡 CRM機能の統合実装画面です")
         
-        if st.button("← ダッシュボードに戻る"):
-            st.session_state.current_view = 'dashboard'
-            st.rerun()
+        # タブで機能分割
+        tab1, tab2, tab3 = st.tabs(["📊 企業一覧", "➕ 企業追加", "⚙️ 設定"])
         
-        st.info("メール配信機能をここに実装します（準備中）")
-    
-    def show_crm_system(self):
-        """CRMシステム表示"""
-        st.title("🏢 企業管理システム (CRM)")
+        with tab1:
+            st.markdown("### 📊 企業データ一覧")
+            st.info("企業データの表示・検索・編集機能（実装予定）")
+            
+            # サンプルデータ表示
+            import pandas as pd
+            sample_data = {
+                '企業名': ['ABC建設', 'XYZ工業', 'DEF開発'],
+                'ステータス': ['Contacted', 'Qualified', 'Proposal'],
+                'スコア': [85, 92, 78]
+            }
+            df = pd.DataFrame(sample_data)
+            st.dataframe(df, use_container_width=True)
         
-        st.info("💡 既存のCRMシステム機能をこちらに統合表示します")
-        
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            st.markdown("""
-            **統合予定機能:**
-            - ✅ 企業データ管理
-            - ✅ Google Sheets連携
-            - ✅ データ処理・スコアリング
-            - ✅ 企業検索・フィルタリング
-            - ✅ データインポート・エクスポート
-            """)
-        
-        with col2:
-            st.markdown("**既存システムアクセス**")
-
-            if st.button("🚀 CRM管理システムを起動", key="launch_crm", use_container_width=True):
-                import subprocess
-                import time
-                
-                with st.spinner("CRMシステムを起動中..."):
-                    try:
-                        subprocess.Popen(["streamlit", "run", "fusion_crm_main.py", "--server.port", "8502"])
-                        time.sleep(5)  # 5秒待機
-                        st.success("✅ CRMシステムを起動しました")
-                        st.info("⏰ 起動完了まで10-15秒お待ちください")
-                        st.markdown("🔗 [CRM管理システムを開く](http://localhost:8502)")
-                    except Exception as e:
-                        st.error(f"❌ 起動に失敗しました: {e}")
+        with tab2:
+            st.markdown("### ➕ 新規企業追加")
+            st.info("企業追加フォーム（
 
     def show_email_system(self):
         """メールシステム表示"""
