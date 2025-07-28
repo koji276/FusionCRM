@@ -564,6 +564,30 @@ class FusionCRMUnified:
             - 💰 ROI分析ツール
             """)
 
+    def show_crm_page(self):
+        """CRM管理画面"""
+        st.title("🏢 CRM管理システム")
+        
+        # 戻るボタン
+        if st.button("← ダッシュボードに戻る"):
+            st.session_state.current_view = 'dashboard'
+            st.rerun()
+        
+        st.info("CRM機能をここに実装します（準備中）")
+    
+    def show_email_page(self):
+        """メール配信画面"""
+        st.title("📧 メール配信システム")
+        
+        # 戻るボタン
+        if st.button("← ダッシュボードに戻る"):
+            st.session_state.current_view = 'dashboard'
+            st.rerun()
+        
+        st.info("メール配信機能をここに実装します（準備中）")
+    
+
+    
     def show_crm_system(self):
         """CRMシステム表示"""
         st.title("🏢 企業管理システム (CRM)")
@@ -598,8 +622,6 @@ class FusionCRMUnified:
                         st.markdown("🔗 [CRM管理システムを開く](http://localhost:8502)")
                     except Exception as e:
                         st.error(f"❌ 起動に失敗しました: {e}")
-
-
 
     def show_email_system(self):
         """メールシステム表示"""
