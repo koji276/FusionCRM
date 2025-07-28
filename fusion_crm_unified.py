@@ -1335,6 +1335,48 @@ class FusionCRMUnified:
                 'failed_logins': 0
             }
 
+def render_crm_page(self):
+    """CRM管理画面"""
+    st.title("🏢 CRM管理システム")
+    
+    # 戻るボタン
+    if st.button("← ダッシュボードに戻る"):
+        st.session_state.current_view = 'dashboard'
+        st.rerun()
+    
+    st.info("CRM機能をここに実装します（準備中）")
+
+def render_email_page(self):
+    """メール配信画面"""
+    st.title("📧 メール配信システム")
+    
+    # 戻るボタン
+    if st.button("← ダッシュボードに戻る"):
+        st.session_state.current_view = 'dashboard'
+        st.rerun()
+    
+    st.info("メール配信機能をここに実装します（準備中）")def render_crm_page(self):
+    """CRM管理画面"""
+    st.title("🏢 CRM管理システム")
+    
+    # 戻るボタン
+    if st.button("← ダッシュボードに戻る"):
+        st.session_state.current_view = 'dashboard'
+        st.rerun()
+    
+    st.info("CRM機能をここに実装します（準備中）")
+
+def render_email_page(self):
+    """メール配信画面"""
+    st.title("📧 メール配信システム")
+    
+    # 戻るボタン
+    if st.button("← ダッシュボードに戻る"):
+        st.session_state.current_view = 'dashboard'
+        st.rerun()
+    
+    st.info("メール配信機能をここに実装します（準備中）")
+
 def main():
     """アプリケーションのメインエントリーポイント"""
     try:
