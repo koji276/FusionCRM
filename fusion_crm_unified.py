@@ -479,28 +479,40 @@ class FusionCRMUnified:
             st.markdown("### 🏢 CRM管理")
             st.info("企業データ管理・ステータス追跡")
             
-            if st.button("🚀 CRM管理システムを起動", key="launch_crm", use_container_width=True):
-                import subprocess
-                try:
-                    subprocess.Popen(["streamlit", "run", "fusion_crm_main.py", "--server.port", "8502"])
-                    st.success("✅ CRMシステムを起動しました")
-                    st.markdown("🔗 [CRM管理システムを開く](http://localhost:8502)")
-                except Exception as e:
-                    st.error("❌ 起動に失敗しました")
+            if st.button("📋 CRM起動手順を表示", key="show_crm", use_container_width=True):
+                st.success("📋 CRM管理システム起動手順")
+                
+                st.markdown("""
+                **以下の手順でCRMシステムを起動してください:**
+                
+                1. **新しいターミナル/コマンドプロンプトを開く**
+                2. **以下のコマンドを実行:**
+                """)
+                
+                st.code("streamlit run fusion_crm_main.py --server.port 8502", language="bash")
+                
+                st.markdown("3. **起動完了後、下記リンクをクリック:**")
+                st.markdown("🔗 [CRM管理システム](http://localhost:8502)")
         
         with col2:
             st.markdown("### 📧 メール配信")
             st.info("AI生成・一括配信システム")
             
-            if st.button("📧 メール配信システムを起動", key="launch_email", use_container_width=True):
-                import subprocess
-                try:
-                    subprocess.Popen(["streamlit", "run", "email_webapp.py", "--server.port", "8503"])
-                    st.success("✅ メール配信システムを起動しました")
-                    st.markdown("🔗 [メール配信システムを開く](http://localhost:8503)")
-                except Exception as e:
-                    st.error("❌ 起動に失敗しました")
-        
+            if st.button("📋 メール起動手順を表示", key="show_email", use_container_width=True):
+                st.success("📋 メール配信システム起動手順")
+                
+                st.markdown("""
+                **以下の手順でメール配信システムを起動してください:**
+                
+                1. **新しいターミナル/コマンドプロンプトを開く**
+                2. **以下のコマンドを実行:**
+                """)
+                
+                st.code("streamlit run email_webapp.py --server.port 8503", language="bash")
+                
+                st.markdown("3. **起動完了後、下記リンクをクリック:**")
+                st.markdown("🔗 [メール配信システム](http://localhost:8503)")
+
         with col3:
             st.markdown("### 📊 システム統合")
             st.warning("🚧 開発中")
