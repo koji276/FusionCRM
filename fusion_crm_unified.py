@@ -470,54 +470,26 @@ class FusionCRMUnified:
             st.info("├── modules/ (5ファイル)")
             st.info("└── crm_modules/ (7ファイル)")
             
-        # 次のアクション - シンプル版
+        # 次のアクション - 画面切り替え版
         st.markdown("**⚡ 次のアクション**")
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.markdown("### 🏢 CRM管理")
-            st.info("企業データ管理・ステータス追跡")
-            
-            if st.button("📋 CRM起動手順を表示", key="show_crm", use_container_width=True):
-                st.success("📋 CRM管理システム起動手順")
-                
-                st.markdown("""
-                **以下の手順でCRMシステムを起動してください:**
-                
-                1. **新しいターミナル/コマンドプロンプトを開く**
-                2. **以下のコマンドを実行:**
-                """)
-                
-                st.code("streamlit run fusion_crm_main.py --server.port 8502", language="bash")
-                
-                st.markdown("3. **起動完了後、下記リンクをクリック:**")
-                st.markdown("🔗 [CRM管理システム](http://localhost:8502)")
+            if st.button("🏢 CRM管理", key="goto_crm", use_container_width=True):
+                st.session_state.current_view = 'crm'
+                st.rerun()
         
         with col2:
-            st.markdown("### 📧 メール配信")
-            st.info("AI生成・一括配信システム")
-            
-            if st.button("📋 メール起動手順を表示", key="show_email", use_container_width=True):
-                st.success("📋 メール配信システム起動手順")
-                
-                st.markdown("""
-                **以下の手順でメール配信システムを起動してください:**
-                
-                1. **新しいターミナル/コマンドプロンプトを開く**
-                2. **以下のコマンドを実行:**
-                """)
-                
-                st.code("streamlit run email_webapp.py --server.port 8503", language="bash")
-                
-                st.markdown("3. **起動完了後、下記リンクをクリック:**")
-                st.markdown("🔗 [メール配信システム](http://localhost:8503)")
-
-        with col3:
-            st.markdown("### 📊 システム統合")
-            st.warning("🚧 開発中")
-            st.caption("まずは軽量化 → 統合の順序で進行")
+            if st.button("📧 メール配信", key="goto_email", use_container_width=True):
+                st.session_state.current_view = 'email'
+                st.rerun()
         
+        with col3:
+            if st.button("📊 ダッシュボード", key="goto_dashboard", use_container_width=True):
+                st.session_state.current_view = 'dashboard'
+                st.rerun()
+
         # 使用方法の説明
         st.markdown("---")
         st.markdown("### 📖 使用方法")
