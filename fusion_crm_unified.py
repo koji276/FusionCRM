@@ -575,18 +575,16 @@ class FusionCRMUnified:
         
         st.info("CRM機能をここに実装します（準備中）")
     
+    # ✅ 正しいインデント
     def show_email_page(self):
         """メール配信画面"""
         st.title("📧 メール配信システム")
         
-        # 戻るボタン
         if st.button("← ダッシュボードに戻る"):
             st.session_state.current_view = 'dashboard'
             st.rerun()
         
         st.info("メール配信機能をここに実装します（準備中）")
-    
-
     
     def show_crm_system(self):
         """CRMシステム表示"""
