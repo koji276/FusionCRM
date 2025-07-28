@@ -402,12 +402,12 @@ class FusionCRMUnified:
         
         # 画面分岐処理
         if st.session_state.current_view == 'crm':
-            self.render_crm_page()
+            self.show_crm_page()  # render_crm_page → show_crm_page
             return
         elif st.session_state.current_view == 'email':
-            self.render_email_page()
+            self.show_email_page()  # render_email_page → show_email_page
             return
-        
+
         # 成果サマリー
         st.markdown("### 📊 システム概要")
         
