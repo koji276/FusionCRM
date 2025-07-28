@@ -594,15 +594,22 @@ class FusionCRMUnified:
         
         with col2:
             st.markdown("**既存システムアクセス**")
-            
-            if st.button("🔗 CRMシステム起動", use_container_width=True, type="primary"):
-                st.markdown("""
-                **CRMシステムを別タブで開いてください:**
+
+            if st.button("🚀 CRM管理システムを起動", key="launch_crm", use_container_width=True):
+                import subprocess
+                import time
                 
-                `streamlit run fusion_crm_main.py`
-                
-                または統合機能の実装を待ってください。
-                """)
+                with st.spinner("CRMシステムを起動中..."):
+                    try:
+                        subprocess.Popen(["streamlit", "run", "fusion_crm_main.py", "--server.port", "8502"])
+                        time.sleep(5)  # 5秒待機
+                        st.success("✅ CRMシステムを起動しました")
+                        st.info("⏰ 起動完了まで10-15秒お待ちください")
+                        st.markdown("🔗 [CRM管理システムを開く](http://localhost:8502)")
+                    except Exception as e:
+                        st.error(f"❌ 起動に失敗しました: {e}")
+
+
 
     def show_email_system(self):
         """メールシステム表示"""
