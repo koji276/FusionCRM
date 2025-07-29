@@ -129,6 +129,134 @@ def normalize_companies_data(companies):
     
     return normalized
 
+# pages/01_crm_excel.py の「正規化結果プレビュー」セクションの後に以下を追加
+
+# 🚀 Google Sheetsアップロード機能
+st.markdown("### 🚀 Google Sheetsにアップロード")
+
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    # 📊 CSVエクスポートボタン
+    if st.button("📊 CSVでエクスポート", key="csv_export"):
+        try:
+            df = pd.DataFrame(normalized_data)
+            csv_data = df.to_csv(index=False)
+            
+            st.download_button(
+                label="📥 CSVファイルをダウンロード",
+                data=csv_data,
+                file_name=f"normalized_companies_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+            st.success("CSVファイルが準備できました！")
+        except Exception as e:
+            st.error(f"CSVエクスポートエラー: {str(e)}")
+
+with col2:
+    # 🚀 Google Sheetsアップロードボタン
+    if st.button("🚀 Google Sheetsにアップロード", key="upload_to_sheets", type="primary"):
+        if len(normalized_data) > 0:
+            with st.spinner('Google Sheetsにアップロード中...'):
+                try:
+                    # アップロード処理を実行
+                    upload_result = upload_to_google_sheets(normalized_data)
+                    
+                    if upload_result and upload_result.get('success'):
+                        st.success(f"✅ {len(normalized_data)}社のデータをGoogle Sheetsに追加しました！")
+                        st.balloons()
+                        
+                        # 詳細結果を表示
+                        if 'results' in upload_result:
+                            results = upload_result['results']
+                            st.info(f"成功: {results['success']}社 | エラー: {results['errors']}社")
+                            
+                            # エラー詳細があれば表示
+                            if results['details']:
+                                with st.expander("📋 詳細結果を確認"):
+                                    for detail in results['details']:
+                                        if "✅" in detail:
+                                            st.success(detail)
+                                        else:
+                                            st.error(detail)
+                    else:
+                        error_msg = upload_result.get('error', '不明なエラー') if upload_result else 'レスポンスなし'
+                        st.error(f"❌ アップロードに失敗しました: {error_msg}")
+                        
+                except Exception as e:
+                    st.error(f"❌ アップロード処理でエラーが発生しました: {str(e)}")
+                    st.error("Google Apps Scriptが更新されているか確認してください")
+        else:
+            st.warning("アップロードするデータがありません")
+
+# アップロード機能の説明
+st.info("⚠️ 注意: この機能は将来実装予定です。現在はプレビューのみ表示されます。")
+
+# 将来実装予定機能
+st.markdown("#### 🔮 将来実装予定")
+future_features = [
+    "Google Sheetsへの直接アップロード",
+    "重複チェック機能", 
+    "バッチ処理進捗表示"
+]
+
+for feature in future_features:
+    st.markdown(f"• {feature}")
+
+
+def upload_to_google_sheets(normalized_data):
+    """正規化データをGoogle Sheetsにアップロード"""
+    try:
+        st.info("🔄 Google Sheetsからデータを取得中...")
+        
+        # Google Apps Script URL
+        api_url = "https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec"
+        
+        # アップロード用のデータを準備
+        upload_data = {
+            "action": "add_companies_batch",
+            "companies": normalized_data
+        }
+        
+        # APIリクエストを送信
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        
+        response = requests.post(
+            api_url,
+            json=upload_data,
+            headers=headers,
+            timeout=30
+        )
+        
+        st.info(f"📡 API Response Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            try:
+                result = response.json()
+                st.success("✅ Google Apps Script API 接続成功")
+                return result
+            except json.JSONDecodeError as e:
+                st.error(f"❌ JSON解析エラー: {str(e)}")
+                st.error(f"Raw Response: {response.text[:500]}")
+                return {"success": False, "error": "JSON解析エラー"}
+        else:
+            st.error(f"❌ HTTP エラー: {response.status_code}")
+            st.error(f"Response: {response.text[:500]}")
+            return {"success": False, "error": f"HTTP {response.status_code}"}
+            
+    except requests.exceptions.Timeout:
+        st.error("❌ タイムアウトエラー: 30秒以内に応答がありませんでした")
+        return {"success": False, "error": "タイムアウト"}
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ リクエストエラー: {str(e)}")
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        st.error(f"❌ 予期しないエラー: {str(e)}")
+        return {"success": False, "error": str(e)}
+
 # ========================================
 # データソース決定
 # ========================================
