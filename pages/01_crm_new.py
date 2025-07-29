@@ -493,6 +493,9 @@ def main():
             # 企業管理機能を直接実装
             st.header("🏢 企業管理")
             
+            # ステータスリストを直接定義
+            status_options = ["全て", "New", "Contacted", "Replied", "Engaged", "Qualified", "Proposal", "Negotiation", "Won", "Lost", "On Hold"]
+            
             # 検索・フィルター機能
             col1, col2 = st.columns([2, 1])
             
@@ -502,7 +505,7 @@ def main():
             with col2:
                 status_filter = st.selectbox(
                     "ステータスフィルター", 
-                    ["全て"] + SALES_STATUS,
+                    status_options,
                     key="status_filter_select_tab2"
                 )
             
@@ -595,17 +598,21 @@ def main():
             # 企業追加機能を直接実装
             st.header("➕ 企業追加")
             
+            # 業界リストとステータスリストを直接定義
+            industry_options = ["建設業", "製造業", "IT・ソフトウェア", "金融業", "小売業", "不動産業", "物流業", "医療・介護", "教育", "その他"]
+            status_options = ["New", "Contacted", "Replied", "Engaged", "Qualified", "Proposal", "Negotiation", "Won", "Lost", "On Hold"]
+            
             with st.form("add_company_form_tab4"):
                 col1, col2 = st.columns(2)
                 
                 with col1:
                     company_name = st.text_input("企業名 *", key="add_company_name_tab4")
                     email = st.text_input("メールアドレス", key="add_company_email_tab4")
-                    industry = st.selectbox("業界", INDUSTRIES, key="add_company_industry_tab4")
+                    industry = st.selectbox("業界", industry_options, key="add_company_industry_tab4")
                 
                 with col2:
                     website = st.text_input("ウェブサイト", key="add_company_website_tab4")
-                    status = st.selectbox("初期ステータス", SALES_STATUS, key="add_company_status_tab4")
+                    status = st.selectbox("初期ステータス", status_options, key="add_company_status_tab4")
                     notes = st.text_area("備考", key="add_company_notes_tab4")
                 
                 submitted = st.form_submit_button("🚀 企業を追加", type="primary")
