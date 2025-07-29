@@ -51,6 +51,12 @@ st.caption("企業データ管理・一括アップロード・PicoCELA関連度
 # Google Sheets連携情報
 st.info("🔗 統合プラットフォーム・Google Sheetsリアルタイム同期・エクセル一括アップロード対応")
 
+# システム状態表示
+if REQUESTS_AVAILABLE:
+    st.success("✅ 修正完成版: Google Sheets接続準備完了")
+else:
+    st.warning("⚠️ オフラインモード: requestsライブラリが利用できません")
+
 # ========================================
 # Google Sheets データ取得（修正版）
 # ========================================
