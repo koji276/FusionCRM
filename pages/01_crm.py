@@ -1,5 +1,5 @@
-# pages/01_crm.py - 修正完成版
-# Updated: 2025-07-29 - Fixed Google Sheets connection and upload functionality
+# pages/01_crm.py - エラー完全修正版
+# Updated: 2025-07-29 - Fixed REQUESTS_AVAILABLE error completely
 # Complete CRM System with Excel upload and Google Sheets batch upload
 
 import streamlit as st
@@ -7,22 +7,28 @@ import pandas as pd
 from datetime import datetime
 import json
 
-# requestsライブラリのエラーハンドリング修正
+# ========================================
+# ライブラリ可用性チェック（最優先）
+# ========================================
+
+# requestsライブラリのチェック
 try:
     import requests
     REQUESTS_AVAILABLE = True
+    requests_status = "✅ requests利用可能"
 except ImportError:
-    st.error("⚠️ requestsライブラリが利用できません。オフラインモードで動作します。")
     REQUESTS_AVAILABLE = False
+    requests_status = "⚠️ requests利用不可"
 
-# 必要なライブラリのインポート
+# Excelライブラリのチェック
 try:
     from io import BytesIO
     import openpyxl
     EXCEL_AVAILABLE = True
+    excel_status = "✅ Excel対応"
 except ImportError:
-    st.warning("⚠️ Excelライブラリが利用できません。CSV機能のみ利用可能です。")
     EXCEL_AVAILABLE = False
+    excel_status = "⚠️ CSV のみ"
 
 # ========================================
 # ページ設定
@@ -34,12 +40,10 @@ st.set_page_config(
 )
 
 # ========================================
-# デバッグメッセージ（修正版）
+# システム状態表示
 # ========================================
-if REQUESTS_AVAILABLE:
-    st.success("✅ 修正完成版: Google Sheets接続エラー修正 + エクセルアップロード機能付き")
-else:
-    st.warning("⚠️ オフラインモード: requestsライブラリ不足のため、サンプルデータで動作中")
+st.success(f"✅ 修正完成版: Google Sheets接続エラー修正 + エクセルアップロード機能付き")
+st.info(f"📊 システム状態: {requests_status} | {excel_status}")
 
 # ========================================
 # CRM管理システム - 完成版
@@ -51,19 +55,13 @@ st.caption("企業データ管理・一括アップロード・PicoCELA関連度
 # Google Sheets連携情報
 st.info("🔗 統合プラットフォーム・Google Sheetsリアルタイム同期・エクセル一括アップロード対応")
 
-# システム状態表示
-if REQUESTS_AVAILABLE:
-    st.success("✅ 修正完成版: Google Sheets接続準備完了")
-else:
-    st.warning("⚠️ オフラインモード: requestsライブラリが利用できません")
-
 # ========================================
-# Google Sheets データ取得（修正版）
+# Google Sheets データ取得関数
 # ========================================
 
 @st.cache_data(ttl=300)  # 5分間キャッシュ
 def get_google_sheets_data():
-    """Google SheetsからCRMデータを取得（修正版）"""
+    """Google SheetsからCRMデータを取得（完全修正版）"""
     if not REQUESTS_AVAILABLE:
         st.info("📋 requestsライブラリが利用できないため、サンプルデータを使用します")
         return [], False
@@ -138,14 +136,14 @@ def get_google_sheets_data():
         st.warning(f"🔗 Google Sheetsデータ取得エラー: {str(e)}")
         return [], False
 
-# データ取得実行（修正版）
+# データ取得実行
 if REQUESTS_AVAILABLE:
     google_sheets_companies, google_sheets_success = get_google_sheets_data()
 else:
     google_sheets_companies, google_sheets_success = [], False
 
 # ========================================
-# データ正規化（実際の構造に基づく）
+# データ正規化関数
 # ========================================
 
 def normalize_companies_data(companies):
@@ -164,7 +162,7 @@ def normalize_companies_data(companies):
         else:
             wifi_display = '❓ 未確認'
         
-        # 業界の推定（descriptionから）
+        # 業界の推定
         description = str(company.get('description', '')).lower()
         if 'construction' in description or 'building' in description:
             industry = '建設業'
@@ -184,19 +182,17 @@ def normalize_companies_data(companies):
             'ステータス': company.get('sales_status', 'New'),
             'PicoCELAスコア': int(company.get('picoCELA_relevance', 0)) if company.get('picoCELA_relevance') else 0,
             'WiFi需要': wifi_display,
-            '販売員': 'admin',  # デフォルト
+            '販売員': 'admin',
             'メール': company.get('email', ''),
             '業界': industry,
             'ウェブサイト': company.get('website_url') or company.get('website', ''),
             '電話番号': company.get('phone', ''),
             '連絡先': company.get('contact_name', ''),
-            '備考': company.get('description', '')[:150] + '...' if len(str(company.get('description', ''))) > 150 else company.get('description', ''),
+            '備考': str(company.get('description', ''))[:150] + '...' if len(str(company.get('description', ''))) > 150 else str(company.get('description', '')),
             '登録日': company.get('created_at', '')[:10] if company.get('created_at') else datetime.now().strftime('%Y-%m-%d'),
             '更新日': company.get('updated_at', '')[:10] if company.get('updated_at') else '',
             '優先度スコア': int(company.get('priority_score', 0)) if company.get('priority_score') else 0,
-            'タグ': company.get('tags', ''),
-            'WiFi必須': company.get('wifi_required', 0),
-            '関連度スコア': int(company.get('picocela_relevance_score', 0)) if company.get('picocela_relevance_score') else 0
+            'タグ': company.get('tags', '')
         }
         
         normalized.append(normalized_company)
@@ -209,55 +205,38 @@ def normalize_excel_data(df):
     
     # カラム名の正規化マッピング
     column_mapping = {
-        # 企業名
         'company name': 'company_name',
         'company_name': 'company_name', 
         '企業名': 'company_name',
         '会社名': 'company_name',
         'name': 'company_name',
-        
-        # メール
         'email address': 'email',
         'email': 'email',
         'メール': 'email',
         'メールアドレス': 'email',
-        
-        # ウェブサイト
         'website': 'website',
         'url': 'website',
         'ウェブサイト': 'website',
         'サイト': 'website',
-        
-        # 電話
         'phone': 'phone',
         'tel': 'phone',
         '電話': 'phone',
         '電話番号': 'phone',
-        
-        # 住所
         'address': 'address',
         '住所': 'address',
         '所在地': 'address',
-        
-        # WiFi需要
         'needs wi-fi': 'wifi_needs',
         'wifi_needs': 'wifi_needs',
         'wifi需要': 'wifi_needs',
         'wifi': 'wifi_needs',
-        
-        # 説明
         'description': 'description',
         '説明': 'description',
         '概要': 'description',
         'notes': 'description',
-        
-        # 連絡先
         'contact info': 'contact',
         'contact': 'contact',
         '連絡先': 'contact',
         '担当者': 'contact',
-        
-        # キーワード数
         'keyword match count': 'keyword_count',
         'keyword_count': 'keyword_count',
         'キーワード数': 'keyword_count'
@@ -320,7 +299,7 @@ def normalize_excel_data(df):
     return normalized_data
 
 def upload_to_google_sheets(normalized_data):
-    """正規化データをGoogle Sheetsにアップロード（修正版）"""
+    """正規化データをGoogle Sheetsにアップロード（完全修正版）"""
     if not REQUESTS_AVAILABLE:
         st.error("❌ requestsライブラリが利用できないため、アップロードできません")
         st.info("💡 ローカル環境でpip install requestsを実行してください")
@@ -790,7 +769,7 @@ with tab5:
             st.success(f"✅ ファイルが選択されました: {uploaded_file.name}")
             
             # ファイル読み込み
-            if uploaded_file.name.endswith(('.xlsx', '.xls')):
+            if uploaded_file.name.endswith(('.xlsx', '.xls')) and EXCEL_AVAILABLE:
                 df = pd.read_excel(uploaded_file)
             else:
                 df = pd.read_csv(uploaded_file)
@@ -928,7 +907,7 @@ with tab6:
     with col3:
         st.metric("最終更新", datetime.now().strftime("%H:%M"))
     with col4:
-        st.metric("システム状態", "正常動作")
+        st.metric("ライブラリ状況", f"{requests_status.split()[1]} | {excel_status.split()[1]}")
     
     # データエクスポート
     st.subheader("📤 データエクスポート")
@@ -950,9 +929,12 @@ with tab6:
         st.cache_data.clear()
         st.success("✅ キャッシュをクリアしました。ページを再読み込みしてください。")
     
-    # API詳細情報
+    # システム詳細情報
+    st.subheader("🔍 システム詳細情報")
+    st.info(f"📊 ライブラリ状況: {requests_status} | {excel_status}")
+    st.info(f"📈 データ企業数: {len(companies_data)}社")
     if google_sheets_success:
-        st.subheader("🔍 API詳細情報")
-        st.info(f"取得企業数: {len(companies_data)}社")
-        st.info(f"API URL: https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec")
-        st.info(f"レスポンス形式: companies配列（dataではない）")
+        st.info(f"🔗 API URL: https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec")
+        st.info(f"📄 レスポンス形式: companies配列")
+    else:
+        st.info("📋 オフラインモード: サンプルデータ使用中")
