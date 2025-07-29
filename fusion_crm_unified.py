@@ -366,7 +366,7 @@ class FusionCRMUnified:
         
         # 画面分岐処理
         if st.session_state.current_view == 'crm':
-            exec(open('pages/01_crm_complete.py').read())
+            exec(open('pages/01_crm_debug.py').read())
             self.show_crm_page()
             return
         elif st.session_state.current_view == 'email':
