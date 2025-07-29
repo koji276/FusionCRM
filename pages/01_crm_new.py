@@ -570,29 +570,51 @@ def main():
             with col1:
                 st.subheader("📊 ステータス分布")
                 
-                # ステータス分布グラフ
+                # ステータス分布グラフ（シンプル版）
                 status_counts = df['ステータス'].value_counts()
-                fig_status = px.bar(
-                    x=status_counts.index,
-                    y=status_counts.values,
-                    title="企業ステータス分布",
-                    labels={'x': 'ステータス', 'y': '企業数'}
-                )
-                fig_status.update_layout(showlegend=False)
-                st.plotly_chart(fig_status, use_container_width=True)
+                
+                # Streamlit標準のbar_chartを使用
+                st.bar_chart(status_counts)
+                
+                # データ表示
+                st.write("**ステータス別企業数:**")
+                for status, count in status_counts.items():
+                    st.write(f"- {status}: {count}社")
             
             with col2:
                 st.subheader("🎯 PicoCELA関連度分析")
                 
-                # スコア分布ヒストグラム
-                fig_score = px.histogram(
-                    df,
-                    x='PicoCELAスコア',
-                    nbins=5,
-                    title="PicoCELA関連度スコア分布",
-                    labels={'PicoCELAスコア': 'スコア', 'count': '企業数'}
+                # スコア分布の表示（シンプル版）
+                scores = df['PicoCELAスコア'].tolist()
+                score_df = pd.DataFrame({'スコア': scores})
+                
+                # Streamlit標準のhistogramを使用
+                st.bar_chart(score_df.T)
+                
+                # 統計情報表示
+                st.write("**スコア統計:**")
+                st.write(f"- 平均スコア: {df['PicoCELAスコア'].mean():.1f}点")
+                st.write(f"- 最高スコア: {df['PicoCELAスコア'].max()}点")
+                st.write(f"- 最低スコア: {df['PicoCELAスコア'].min()}点")
+            
+            # 追加分析
+            st.subheader("📈 詳細分析")
+            
+            col3, col4 = st.columns(2)
+            
+            with col3:
+                st.metric(
+                    "高スコア企業（80点以上）",
+                    len(df[df['PicoCELAスコア'] >= 80]),
+                    f"{len(df[df['PicoCELAスコア'] >= 80])/len(df)*100:.1f}%"
                 )
-                st.plotly_chart(fig_score, use_container_width=True)
+            
+            with col4:
+                st.metric(
+                    "成約見込み企業",
+                    len(df[df['ステータス'].isin(['Qualified', 'Proposal'])]),
+                    "積極フォロー推奨"
+                )
         
         with tab4:
             # 企業追加機能を直接実装
