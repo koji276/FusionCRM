@@ -1,512 +1,593 @@
-# pages/01_🏢_CRM管理.py
-# FusionCRM - 企業管理システム (Multipage対応版)
+# pages/01_crm.py - FusionCRM統合版
+# fusion_crm_main.py の主要機能を統合ダッシュボード内に移植
 
 import streamlit as st
 import pandas as pd
-import sqlite3
-from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import json
+import time
+import requests
+import os
 
-# ページ設定
-st.set_page_config(
-    page_title="FusionCRM - 企業管理",
-    page_icon="🏢",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# 戻るボタン
+if st.button("← 統合ダッシュボードに戻る"):
+    st.session_state.current_view = 'dashboard'
+    st.rerun()
 
-# 戻るボタン（ヘッダー）
-col1, col2, col3 = st.columns([1, 2, 1])
-with col1:
-    if st.button("← 統合ダッシュボードに戻る", key="back_to_dashboard"):
-        st.switch_page("fusion_crm_unified.py")
+# ページ設定とスタイル
+st.title("🏢 CRM管理システム")
+st.markdown("**企業データ管理・ステータス追跡・PicoCELA関連度分析**")
 
-# ページヘッダー
-st.markdown("# 🏢 CRM管理システム")
-st.markdown("### 企業データ管理・ステータス追跡・PicoCELA関連度分析")
+# 統合プラットフォームからサイドバーへの移動（Google Sheets連携でリアルタイム同期）
+st.info("🔄 統合プラットフォーム: サイドバーから他のページに移動 | Google Sheets連携でリアルタイム同期")
 
-# ナビゲーション情報
-st.info("💡 **統合プラットフォーム**: サイドバーから他のページに移動 | Google Sheets連携でリアルタイム同期")
+# 拡張ステータス定義
+SALES_STATUS = {
+    'New': '新規企業',
+    'Contacted': '初回連絡済み', 
+    'Replied': '返信あり',
+    'Engaged': '継続対話中',
+    'Qualified': '有望企業確定',
+    'Proposal': '提案書提出済み',
+    'Negotiation': '契約交渉中',
+    'Won': '受注成功',
+    'Lost': '失注',
+    'Dormant': '休眠中'
+}
 
-# サイドバー情報
-with st.sidebar:
-    st.markdown("### 🔗 クイックナビゲーション")
-    st.markdown("- 📊 [統合ダッシュボード](../)")
-    st.markdown("- 🏢 **企業管理** (現在)")
-    st.markdown("- 📧 [メール配信](02_📧_メール配信.py)")
+# PicoCELA関連キーワード
+PICOCELA_KEYWORDS = [
+    'network', 'mesh', 'wireless', 'wifi', 'connectivity',
+    'iot', 'smart', 'digital', 'automation', 'sensor', 'ai',
+    'construction', 'building', 'site', 'industrial', 'management',
+    'platform', 'solution', 'integration', 'control', 'monitoring'
+]
+
+class GoogleSheetsAPI:
+    """Google Sheets API（Google Apps Script経由）- 統合版"""
     
-    st.markdown("---")
-    st.markdown("### 🎯 CRM機能")
-    st.markdown("""
-    ✅ **10段階ステータス管理**
-    - New → Contacted → Replied
-    - Engaged → Qualified → Proposal
-    - Negotiation → Won/Lost/Dormant
+    def __init__(self, gas_url):
+        self.gas_url = gas_url
+        self._connection_tested = False
+        self._connection_status = "未テスト"
     
-    ✅ **PicoCELA関連度スコア**
-    - 自動キーワード分析
-    - 優先度計算（0-150点）
-    
-    ✅ **Google Sheets同期**
-    - リアルタイム更新
-    - チーム共有対応
-    """)
-    
-    st.markdown("---")
-    
-    # システム状況
-    st.markdown("### 📊 システム状況")
-    st.success("🟢 Google Sheets接続: 正常")
-    st.success("🟢 データ同期: リアルタイム")
-    st.info("📈 総企業数: 1,247社")
+    def call_api(self, action, method='GET', data=None):
+        """API呼び出しの共通メソッド"""
+        try:
+            if method == 'GET':
+                response = requests.get(f"{self.gas_url}?action={action}", timeout=30)
+            else:
+                response = requests.post(
+                    self.gas_url,
+                    json={"action": action, **data} if data else {"action": action},
+                    headers={'Content-Type': 'application/json'},
+                    timeout=30
+                )
+            
+            if response.status_code != 200:
+                st.warning(f"HTTP {response.status_code}: サーバー応答エラー")
+                return {"success": False, "error": f"HTTP {response.status_code}"}
+            
+            try:
+                result = response.json()
+            except json.JSONDecodeError:
+                st.warning("非JSON応答を受信 - Google Apps Scriptの設定を確認してください")
+                return {"success": False, "error": "Invalid JSON response"}
+            
+            if not result.get('success'):
+                error_msg = result.get('error', 'Unknown error')
+                if action not in ['test', 'init_database']:
+                    st.error(f"API エラー（{action}）: {error_msg}")
+                return result
+            
+            return result
+            
+        except requests.exceptions.Timeout:
+            st.error(f"タイムアウト（{action}）: 30秒以内に応答なし")
+            return {"success": False, "error": "Timeout"}
+        except requests.exceptions.RequestException as e:
+            st.error(f"ネットワークエラー（{action}）: {str(e)}")
+            return {"success": False, "error": str(e)}
+        except Exception as e:
+            st.error(f"予期しないエラー（{action}）: {str(e)}")
+            return {"success": False, "error": str(e)}
 
-# メインコンテンツエリア
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 ダッシュボード", "🏢 企業管理", "📈 分析", "📤 データ管理", "⚙️ 設定"])
+class ENRDataProcessor:
+    """ENRデータ処理クラス - 統合版"""
+    
+    @staticmethod
+    def calculate_picocela_relevance(company_data):
+        """PicoCELA関連度スコア計算"""
+        score = 0
+        text_fields = [
+            str(company_data.get('company_name', '')),
+            str(company_data.get('website_url', '')),
+            str(company_data.get('notes', '')),
+            str(company_data.get('industry', ''))
+        ]
+        
+        full_text = ' '.join(text_fields).lower()
+        
+        for keyword in PICOCELA_KEYWORDS:
+            if keyword.lower() in full_text:
+                score += 10
+        
+        return min(score, 100)
+    
+    @staticmethod
+    def detect_wifi_requirement(company_data):
+        """WiFi需要判定"""
+        wifi_indicators = [
+            'wifi', 'wireless', 'network', 'connectivity', 
+            'iot', 'smart building', 'construction tech'
+        ]
+        
+        text_fields = [
+            str(company_data.get('company_name', '')),
+            str(company_data.get('notes', '')),
+            str(company_data.get('industry', ''))
+        ]
+        
+        full_text = ' '.join(text_fields).lower()
+        
+        for indicator in wifi_indicators:
+            if indicator in full_text:
+                return True
+        return False
+    
+    @staticmethod
+    def calculate_priority_score(company_data):
+        """優先度スコア計算"""
+        relevance = ENRDataProcessor.calculate_picocela_relevance(company_data)
+        wifi_required = ENRDataProcessor.detect_wifi_requirement(company_data)
+        
+        priority = relevance
+        if wifi_required:
+            priority += 50
+        
+        return min(priority, 150)
 
-with tab1:
+class CompanyManager:
+    """企業管理クラス（統合版）"""
+    
+    def __init__(self, api):
+        self.api = api
+        self._ensure_database()
+    
+    def _ensure_database(self):
+        """データベース初期化確認"""
+        result = self.api.call_api('init_database', method='POST')
+        if result and result.get('success') and result.get('spreadsheet_url'):
+            st.session_state.crm_spreadsheet_url = result['spreadsheet_url']
+    
+    def add_company(self, company_data, user_id="system"):
+        """企業追加"""
+        try:
+            # PicoCELA関連度とWiFi需要を自動計算
+            relevance_score = ENRDataProcessor.calculate_picocela_relevance(company_data)
+            wifi_required = 1 if ENRDataProcessor.detect_wifi_requirement(company_data) else 0
+            priority_score = ENRDataProcessor.calculate_priority_score(company_data)
+            
+            company_data['picocela_relevance_score'] = relevance_score
+            company_data['wifi_required'] = wifi_required
+            company_data['priority_score'] = priority_score
+            company_data['sales_status'] = company_data.get('sales_status', 'New')
+            
+            result = self.api.call_api('add_company', method='POST', data={'company': company_data})
+            
+            if result and result.get('success'):
+                return result.get('company_id')
+            return None
+            
+        except Exception as e:
+            st.error(f"企業追加エラー: {str(e)}")
+            return None
+    
+    def update_status(self, company_id, new_status, user_id, reason="", notes=""):
+        """ステータス更新"""
+        try:
+            result = self.api.call_api('update_status', method='POST', data={
+                'company_id': company_id,
+                'new_status': new_status,
+                'note': f"{reason} - {notes}" if reason else notes
+            })
+            
+            return result and result.get('success')
+            
+        except Exception as e:
+            st.error(f"ステータス更新エラー: {str(e)}")
+            return False
+    
+    def get_companies_by_status(self, status=None, wifi_required=None):
+        """ステータス別企業取得"""
+        try:
+            result = self.api.call_api('get_companies')
+            
+            if result and result.get('success') and result.get('companies'):
+                df = pd.DataFrame(result['companies'])
+                
+                # 安全なフィルタリング
+                if status and not df.empty and 'sales_status' in df.columns:
+                    df = df[df['sales_status'] == status]
+                
+                if wifi_required is not None and not df.empty and 'wifi_required' in df.columns:
+                    df = df[df['wifi_required'] == wifi_required]
+                
+                return df
+            
+            return pd.DataFrame()
+            
+        except Exception as e:
+            st.error(f"企業データ取得エラー: {str(e)}")
+            return pd.DataFrame()
+    
+    def get_all_companies(self):
+        """全企業取得"""
+        return self.get_companies_by_status()
+
+def get_google_sheets_api():
+    """Google Sheets API取得（統合版）"""
+    
+    # 既存の統合システムのAPI設定を利用
+    if 'google_apps_script_url' in st.secrets:
+        gas_url = st.secrets['google_apps_script_url']
+        try:
+            api = GoogleSheetsAPI(gas_url)
+            st.session_state.crm_gas_url = gas_url
+            return api
+        except Exception as e:
+            st.error(f"API初期化エラー: {str(e)}")
+    
+    elif 'crm_gas_url' in st.session_state:
+        try:
+            return GoogleSheetsAPI(st.session_state.crm_gas_url)
+        except Exception as e:
+            st.error(f"保存済みURL初期化エラー: {str(e)}")
+            del st.session_state.crm_gas_url
+    
+    # フォールバック: 統合システムのAPI設定を使用
+    elif 'gas_url' in st.session_state:
+        try:
+            return GoogleSheetsAPI(st.session_state.gas_url)
+        except Exception as e:
+            st.error(f"統合システムAPI使用エラー: {str(e)}")
+    
+    return None
+
+def show_crm_dashboard(company_manager):
+    """CRMダッシュボード"""
     st.markdown("## 📊 CRMダッシュボード")
+    
+    # 基本統計
+    all_companies = company_manager.get_all_companies()
+    total_companies = len(all_companies)
+    
+    if total_companies == 0:
+        st.info("📋 企業データがありません。企業を追加してテストしてください。")
+        
+        # サンプルデータ追加ボタン
+        if st.button("🚀 サンプルデータを追加", type="primary"):
+            sample_companies = [
+                {
+                    'company_name': 'ABC建設株式会社',
+                    'email': 'info@abc-const.jp',
+                    'industry': 'Construction',
+                    'notes': 'WiFi, mesh network solutions needed for construction sites',
+                    'source': 'Sample Data'
+                },
+                {
+                    'company_name': 'XYZ工業',
+                    'email': 'contact@xyz-ind.com',
+                    'industry': 'Industrial',
+                    'notes': 'Smart factory, IoT integration, wireless monitoring',
+                    'source': 'Sample Data'
+                },
+                {
+                    'company_name': 'DEF開発',
+                    'email': 'sales@def-dev.co.jp',
+                    'industry': 'Development',
+                    'notes': 'Smart building automation, network infrastructure',
+                    'source': 'Sample Data'
+                }
+            ]
+            
+            success_count = 0
+            for company in sample_companies:
+                result = company_manager.add_company(company, 'system')
+                if result:
+                    success_count += 1
+            
+            if success_count > 0:
+                st.success(f"✅ {success_count}社のサンプルデータを追加しました！")
+                time.sleep(1)
+                st.rerun()
+        
+        return
+    
+    # 統計計算
+    try:
+        # WiFi必要企業数
+        wifi_companies = len(all_companies[all_companies['wifi_required'] == 1]) if 'wifi_required' in all_companies.columns else 0
+        
+        # PicoCELA関連企業数
+        picocela_companies = len(all_companies[all_companies['picocela_relevance_score'] >= 50]) if 'picocela_relevance_score' in all_companies.columns else 0
+        
+        # 今月目標（仮）
+        monthly_target = 15
+        
+    except Exception as e:
+        st.error(f"統計計算エラー: {str(e)}")
+        wifi_companies = 0
+        picocela_companies = 0
+        monthly_target = 15
     
     # メトリクス表示
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("総企業数", "1,247", "+47 (今月)")
+        st.metric("📈 総企業数", f"{total_companies:,}")
+        if total_companies > 0:
+            st.caption("🔄 最終更新")
+    
     with col2:
-        st.metric("アクティブ企業", "892", "+12 (今週)")
+        st.metric("📶 アクティブ企業", f"{wifi_companies:,}")
+        wifi_pct = f"↗️ {wifi_companies/total_companies*100:.1f}%" if total_companies > 0 else "0%"
+        st.caption(wifi_pct)
+    
     with col3:
-        st.metric("PicoCELA関連", "156", "+8 (高スコア)")
+        st.metric("🎯 PicoCELA関連", f"{picocela_companies:,}")
+        relevance_pct = f"↗️ {picocela_companies/total_companies*100:.1f}%" if total_companies > 0 else "0%"
+        st.caption(relevance_pct)
+    
     with col4:
-        st.metric("今月成約", "15", "+3 (先月比)")
-    
-    # ステータス分布とスコア分析
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### 📈 企業ステータス分布（10段階）")
-        
-        status_data = {
-            'ステータス': ['New', 'Contacted', 'Replied', 'Engaged', 'Qualified', 
-                        'Proposal', 'Negotiation', 'Won', 'Lost', 'Dormant'],
-            '企業数': [120, 180, 95, 78, 45, 32, 18, 25, 85, 42],
-            '成約可能性': [5, 15, 25, 40, 60, 75, 85, 100, 0, 10]
-        }
-        
-        df_status = pd.DataFrame(status_data)
-        
-        # カラーマップ
-        colors = ['#ff6b6b', '#ffa500', '#ffeb3b', '#4caf50', '#2196f3', 
-                 '#9c27b0', '#e91e63', '#4caf50', '#9e9e9e', '#607d8b']
-        
-        fig = px.bar(df_status, x='ステータス', y='企業数', 
-                    title="ステータス別企業数",
-                    color='成約可能性',
-                    color_continuous_scale='RdYlGn')
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("### 🎯 PicoCELA関連度スコア分布")
-        
-        # スコア分布（サンプルデータ）
-        import numpy as np
-        np.random.seed(42)
-        scores = np.random.beta(2, 5, 1000) * 100
-        
-        fig = px.histogram(x=scores, nbins=20, 
-                          title="PicoCELA関連度スコア分布",
-                          labels={'x': 'スコア', 'y': '企業数'})
-        fig.add_vline(x=70, line_dash="dash", line_color="red", 
-                     annotation_text="高優先度ライン (70点)")
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # パフォーマンス推移
-    st.markdown("### 📈 月次パフォーマンス推移")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # 月次データ
-        months = ['4月', '5月', '6月', '7月']
-        new_companies = [35, 42, 38, 47]
-        conversions = [8, 12, 9, 15]
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=months, y=new_companies, mode='lines+markers',
-                               name='新規企業', line=dict(color='blue')))
-        fig.add_trace(go.Scatter(x=months, y=conversions, mode='lines+markers',
-                               name='成約数', line=dict(color='green')))
-        fig.update_layout(title="新規企業・成約数推移", height=350)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # 成約率
-        conversion_rates = [22.9, 28.6, 23.7, 31.9]  # 成約率%
-        
-        fig = px.bar(x=months, y=conversion_rates,
-                    title="月次成約率",
-                    labels={'x': '月', 'y': '成約率 (%)'})
-        fig.update_traces(marker_color='lightgreen')
-        fig.update_layout(height=350)
-        st.plotly_chart(fig, use_container_width=True)
+        st.metric("📊 今月目標", f"{monthly_target:,}")
+        st.caption("↗️ 売上目標")
 
-with tab2:
+def show_crm_analysis(company_manager):
+    """CRM分析表示"""
+    st.markdown("## 📈 企業ステータス分析 (10段階)")
+    
+    all_companies = company_manager.get_all_companies()
+    
+    if all_companies.empty:
+        st.info("分析するデータがありません。")
+        return
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # ステータス分布グラフ
+        if 'sales_status' in all_companies.columns:
+            status_counts = all_companies['sales_status'].value_counts()
+            
+            # カラーマッピング
+            colors = ['#ff9999', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+            
+            fig = px.bar(
+                x=status_counts.index,
+                y=status_counts.values,
+                title="ステータス別企業数",
+                color=status_counts.values,
+                color_continuous_scale="Viridis"
+            )
+            fig.update_layout(showlegend=False, height=400)
+            st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # PicoCELA関連度スコア分析
+        if 'picocela_relevance_score' in all_companies.columns:
+            
+            fig = px.histogram(
+                all_companies,
+                x='picocela_relevance_score',
+                nbins=10,
+                title="PicoCELA関連度スコア分布",
+                color_discrete_sequence=['#1f77b4']
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+
+def show_company_list_management(company_manager):
+    """企業一覧・管理"""
     st.markdown("## 🏢 企業管理")
     
-    # 検索・フィルター
+    # 企業名検索
     col1, col2, col3, col4 = st.columns(4)
+    
     with col1:
         search_term = st.text_input("🔍 企業名検索", placeholder="企業名を入力...")
-    with col2:
-        status_filter = st.selectbox("📋 ステータス", 
-            ['全て', 'New', 'Contacted', 'Replied', 'Engaged', 'Qualified', 
-             'Proposal', 'Negotiation', 'Won', 'Lost', 'Dormant'])
-    with col3:
-        score_filter = st.slider("🎯 最小PicoCELAスコア", 0, 100, 0)
-    with col4:
-        wifi_filter = st.selectbox("📶 WiFi需要", ['全て', 'あり', 'なし'])
-    
-    # 企業リスト（サンプルデータ）
-    st.markdown("### 📋 企業リスト")
-    
-    company_data = {
-        '企業ID': ['CRM001', 'CRM002', 'CRM003', 'CRM004', 'CRM005', 'CRM006'],
-        '企業名': ['ABC建設株式会社', 'XYZ工業', 'DEF開発', '株式会社GHI建設', 'JKL建設', 'MNO工業'],
-        'ステータス': ['Contacted', 'Qualified', 'Proposal', 'Replied', 'New', 'Engaged'],
-        'PicoCELAスコア': [85, 92, 78, 67, 73, 88],
-        '優先度': [135, 142, 128, 117, 123, 138],
-        'WiFi需要': ['✅', '✅', '❌', '✅', '✅', '✅'],
-        'メール': ['info@abc-const.jp', 'contact@xyz-ind.com', 'sales@def-dev.co.jp', 
-                  'info@ghi-const.com', 'contact@jkl-const.jp', 'info@mno-ind.com'],
-        '最終更新': ['2025-07-25', '2025-07-26', '2025-07-27', '2025-07-24', '2025-07-27', '2025-07-26']
-    }
-    
-    df_companies = pd.DataFrame(company_data)
-    
-    # フィルター適用
-    if search_term:
-        df_companies = df_companies[df_companies['企業名'].str.contains(search_term, case=False, na=False)]
-    if status_filter != '全て':
-        df_companies = df_companies[df_companies['ステータス'] == status_filter]
-    if score_filter > 0:
-        df_companies = df_companies[df_companies['PicoCELAスコア'] >= score_filter]
-    if wifi_filter == 'あり':
-        df_companies = df_companies[df_companies['WiFi需要'] == '✅']
-    elif wifi_filter == 'なし':
-        df_companies = df_companies[df_companies['WiFi需要'] == '❌']
-    
-    # データ表示
-    st.dataframe(
-        df_companies,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "PicoCELAスコア": st.column_config.ProgressColumn(
-                "PicoCELAスコア",
-                help="PicoCELA関連度スコア (0-100)",
-                min_value=0,
-                max_value=100,
-            ),
-            "優先度": st.column_config.NumberColumn(
-                "優先度",
-                help="総合優先度スコア",
-                min_value=0,
-                max_value=200,
-                format="%d"
-            ),
-            "メール": st.column_config.TextColumn(
-                "メール",
-                width="medium"
-            )
-        }
-    )
-    
-    # 選択企業のアクション
-    st.markdown("### ⚡ アクション")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("➕ 新規企業追加", use_container_width=True):
-            st.success("新規企業追加画面を開きました（実装予定）")
     
     with col2:
-        if st.button("📧 選択企業にメール", use_container_width=True):
-            st.success("メール配信ページに移動（実装予定）")
+        status_filter = st.selectbox("📊 ステータス", ["全て"] + list(SALES_STATUS.keys()))
     
     with col3:
-        if st.button("📤 データエクスポート", use_container_width=True):
-            csv = df_companies.to_csv(index=False)
-            st.download_button(
-                label="📥 CSVダウンロード",
-                data=csv,
-                file_name=f"企業リスト_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
+        picocela_filter = st.slider("🎯 以上PicoCELAスコア", 0, 100, 0)
     
     with col4:
-        if st.button("🔄 Google Sheets同期", use_container_width=True):
-            with st.spinner("Google Sheetsと同期中..."):
-                # 実際の同期処理をここに実装
-                import time
-                time.sleep(2)
-            st.success("✅ Google Sheets同期完了")
-
-with tab3:
-    st.markdown("## 📈 分析・レポート")
+        wifi_filter = st.selectbox("📶 WiFi需要", ["全て", "WiFi必要", "WiFi不要"])
     
-    # 高度分析
-    col1, col2 = st.columns(2)
+    # データ取得とフィルタリング
+    companies_df = company_manager.get_all_companies()
     
-    with col1:
-        st.markdown("### 📊 業界別パフォーマンス")
+    if not companies_df.empty:
+        # フィルタリング適用
+        filtered_df = companies_df.copy()
         
-        industry_data = {
-            '業界': ['建設', '製造', 'IT', '小売', 'その他'],
-            '企業数': [450, 280, 150, 120, 247],
-            '成約率': [12.5, 8.9, 15.2, 6.3, 7.8]
-        }
+        # 企業名検索
+        if search_term and 'company_name' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['company_name'].str.contains(search_term, case=False, na=False)]
         
-        df_industry = pd.DataFrame(industry_data)
+        # ステータスフィルター
+        if status_filter != "全て" and 'sales_status' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['sales_status'] == status_filter]
         
-        fig = px.scatter(df_industry, x='企業数', y='成約率', size='企業数',
-                        hover_name='業界', title="業界別 企業数 vs 成約率")
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("### 🎯 スコア vs 成約率")
+        # PicoCELAスコアフィルター
+        if 'picocela_relevance_score' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['picocela_relevance_score'] >= picocela_filter]
         
-        # スコア範囲別成約率
-        score_ranges = ['0-20', '21-40', '41-60', '61-80', '81-100']
-        conversion_by_score = [2.1, 4.8, 8.3, 15.7, 28.4]
+        # WiFi需要フィルター
+        if wifi_filter != "全て" and 'wifi_required' in filtered_df.columns:
+            wifi_value = 1 if wifi_filter == "WiFi必要" else 0
+            filtered_df = filtered_df[filtered_df['wifi_required'] == wifi_value]
         
-        fig = px.bar(x=score_ranges, y=conversion_by_score,
-                    title="PicoCELAスコア別成約率",
-                    labels={'x': 'スコア範囲', 'y': '成約率 (%)'})
-        fig.update_traces(marker_color='lightblue')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # パイプライン分析
-    st.markdown("### 🔄 パイプライン分析")
-    
-    pipeline_data = {
-        'ステージ': ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Closing'],
-        '企業数': [500, 200, 80, 35, 15],
-        '予想収益': [0, 50000, 200000, 450000, 750000]
-    }
-    
-    df_pipeline = pd.DataFrame(pipeline_data)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fig = px.funnel(df_pipeline, x='企業数', y='ステージ',
-                       title="営業パイプライン")
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        fig = px.bar(df_pipeline, x='ステージ', y='予想収益',
-                    title="ステージ別予想収益")
-        st.plotly_chart(fig, use_container_width=True)
-
-with tab4:
-    st.markdown("## 📤 データ管理")
-    
-    # データインポート
-    st.markdown("### 📥 データインポート")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### 📄 CSVファイルアップロード")
-        uploaded_file = st.file_uploader(
-            "企業データ CSV ファイルを選択",
-            type=['csv'],
-            help="CSV形式の企業データをアップロードできます"
-        )
+        st.markdown(f"### 📋 企業リスト ({len(filtered_df)}社)")
         
-        if uploaded_file is not None:
-            try:
-                df_upload = pd.read_csv(uploaded_file)
-                st.success(f"✅ {len(df_upload)} 件のデータを読み込みました")
-                st.dataframe(df_upload.head(), use_container_width=True)
-                
-                if st.button("📤 Google Sheetsにインポート"):
-                    with st.spinner("データをインポート中..."):
-                        # 実際のインポート処理をここに実装
-                        import time
-                        time.sleep(3)
-                    st.success("✅ データインポート完了")
-                    
-            except Exception as e:
-                st.error(f"❌ ファイル読み込みエラー: {e}")
-    
-    with col2:
-        st.markdown("#### 🔍 ENRデータ自動収集")
-        
-        st.info("""
-        **FusionReach連携**
-        - ENR企業データの自動収集
-        - PicoCELA関連度自動判定
-        - 優先度スコア自動計算
-        """)
-        
-        if st.button("🚀 ENRデータ収集開始", use_container_width=True):
-            with st.spinner("ENRデータを収集中..."):
-                # 実際の収集処理をここに実装
-                import time
-                time.sleep(4)
-            st.success("✅ 47社の新規企業データを収集しました")
-    
-    # データエクスポート
-    st.markdown("### 📤 データエクスポート")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("📊 全企業データ", use_container_width=True):
-            # サンプルデータでエクスポート
-            csv_data = df_companies.to_csv(index=False)
-            st.download_button(
-                "📥 CSVダウンロード",
-                csv_data,
-                f"全企業データ_{datetime.now().strftime('%Y%m%d')}.csv",
-                "text/csv"
-            )
-    
-    with col2:
-        if st.button("🎯 高スコア企業のみ", use_container_width=True):
-            high_score = df_companies[df_companies['PicoCELAスコア'] >= 80]
-            csv_data = high_score.to_csv(index=False)
-            st.download_button(
-                "📥 CSVダウンロード",
-                csv_data,
-                f"高スコア企業_{datetime.now().strftime('%Y%m%d')}.csv",
-                "text/csv"
-            )
-    
-    with col3:
-        if st.button("📧 メール配信リスト", use_container_width=True):
-            email_list = df_companies[['企業名', 'メール', 'ステータス']]
-            csv_data = email_list.to_csv(index=False)
-            st.download_button(
-                "📥 CSVダウンロード",
-                csv_data,
-                f"メール配信リスト_{datetime.now().strftime('%Y%m%d')}.csv",
-                "text/csv"
-            )
-
-with tab5:
-    st.markdown("## ⚙️ 設定")
-    
-    # Google Sheets設定
-    st.markdown("### 🔗 Google Sheets連携設定")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        sheets_url = st.text_input(
-            "📊 Google Sheets URL",
-            placeholder="https://docs.google.com/spreadsheets/d/...",
-            help="CRMデータが保存されているGoogle SheetsのURL"
-        )
-        
-        api_key = st.text_input(
-            "🔑 Google Apps Script API URL",
-            type="password",
-            placeholder="Google Apps ScriptのAPI URL",
-            help="データ同期用のGoogle Apps Script URL"
-        )
-        
-        # 同期設定
-        st.markdown("#### 🔄 同期設定")
-        auto_sync = st.checkbox("自動同期を有効にする", value=True)
-        sync_interval = st.selectbox("同期間隔", ["5分", "15分", "30分", "1時間"], index=1)
-    
-    with col2:
-        st.markdown("#### 📊 接続状況")
-        
-        # 接続状況表示
-        if sheets_url and api_key:
-            st.success("🟢 Google Sheets: 接続済み")
-            st.info(f"📈 最終同期: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-            st.metric("同期データ数", "1,247", "企業")
+        if not filtered_df.empty:
+            # 表示用データ準備
+            display_columns = ['company_name', 'sales_status']
+            
+            if 'picocela_relevance_score' in filtered_df.columns:
+                display_columns.append('picocela_relevance_score')
+            if 'wifi_required' in filtered_df.columns:
+                display_columns.append('wifi_required')
+            if 'email' in filtered_df.columns:
+                display_columns.append('email')
+            if 'industry' in filtered_df.columns:
+                display_columns.append('industry')
+            
+            # 表示用に列名を変更
+            display_df = filtered_df[display_columns].copy()
+            column_mapping = {
+                'company_name': '企業名',
+                'sales_status': 'ステータス',
+                'picocela_relevance_score': 'PicoCELAスコア',
+                'wifi_required': 'WiFi需要',
+                'email': 'メール',
+                'industry': '業界'
+            }
+            
+            display_df = display_df.rename(columns=column_mapping)
+            
+            # WiFi需要を分かりやすく表示
+            if 'WiFi需要' in display_df.columns:
+                display_df['WiFi需要'] = display_df['WiFi需要'].map({1: '✅', 0: '❌'})
+            
+            st.dataframe(display_df, use_container_width=True, height=400)
         else:
-            st.warning("🟡 Google Sheets: 未接続")
-            st.info("URL・API Keyを入力してください")
+            st.info("フィルター条件に該当する企業がありません。")
+    else:
+        st.info("企業データがありません。企業を追加してください。")
+
+def show_add_company_form(company_manager):
+    """企業追加フォーム"""
+    st.markdown("### ➕ 新規企業追加")
+    
+    with st.form("add_company_form"):
+        col1, col2 = st.columns(2)
         
-        # 接続テスト
-        if st.button("🔍 接続テスト", use_container_width=True):
-            if sheets_url and api_key:
-                with st.spinner("接続をテスト中..."):
-                    import time
-                    time.sleep(2)
-                st.success("✅ 接続テスト成功")
-                st.balloons()
+        with col1:
+            company_name = st.text_input("企業名*", placeholder="例: 株式会社サンプル")
+            email = st.text_input("メールアドレス", placeholder="contact@example.com")
+            industry = st.text_input("業界", placeholder="建設業")
+        
+        with col2:
+            phone = st.text_input("電話番号", placeholder="03-1234-5678")
+            website_url = st.text_input("ウェブサイト", placeholder="https://example.com")
+            source = st.selectbox("情報源", ["Manual", "ENR Import", "Web Research", "Referral"])
+        
+        notes = st.text_area("備考・メモ", placeholder="企業の特徴、WiFi需要、その他重要な情報")
+        
+        submitted = st.form_submit_button("🏢 企業を追加", type="primary", use_container_width=True)
+        
+        if submitted:
+            if company_name:
+                company_data = {
+                    'company_name': company_name,
+                    'email': email,
+                    'phone': phone,
+                    'website_url': website_url,
+                    'industry': industry,
+                    'notes': notes,
+                    'source': source
+                }
+                
+                with st.spinner("企業を追加中..."):
+                    company_id = company_manager.add_company(company_data, 'user')
+                
+                if company_id:
+                    st.success(f"✅ 企業「{company_name}」を追加しました！")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ 企業追加に失敗しました")
             else:
-                st.error("❌ URL・API Keyを入力してください")
+                st.error("❌ 企業名は必須です")
+
+# メイン実行部分
+try:
+    # API取得
+    api = get_google_sheets_api()
+    
+    if api is None:
+        st.error("🔌 Google Sheets APIに接続できません")
+        st.info("統合ダッシュボードの設定を確認してください。")
         
-        # 手動同期
-        if st.button("🔄 今すぐ同期", use_container_width=True):
-            with st.spinner("Google Sheetsと同期中..."):
-                import time
-                time.sleep(3)
-            st.success("✅ 同期完了")
-    
-    # PicoCELAスコアリング設定
-    st.markdown("### 🎯 PicoCELAスコアリング設定")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### 🔍 関連キーワード")
-        keywords = st.text_area(
-            "PicoCELA関連キーワード（カンマ区切り）",
-            value="network,mesh,wireless,wifi,connectivity,iot,smart,digital,automation,sensor",
-            help="企業のPicoCELA関連度を判定するキーワード"
-        )
+        # フォールバック: 基本機能のみ提供
+        st.markdown("### 📊 基本CRM機能（オフライン）")
+        st.info("Google Sheets接続なしでも基本機能は利用できます。")
         
-        wifi_bonus = st.slider("WiFi需要ボーナス", 0, 100, 50, 
-                              help="WiFi需要がある企業への追加スコア")
-    
-    with col2:
-        st.markdown("#### ⚙️ スコア計算設定")
+        # サンプルデータ表示
+        sample_data = {
+            '企業名': ['ABC建設', 'XYZ工業', 'DEF開発'],
+            'ステータス': ['Contacted', 'Qualified', 'Proposal'],
+            'PicoCELAスコア': [85, 92, 78],
+            'WiFi需要': ['✅', '✅', '❌']
+        }
+        df = pd.DataFrame(sample_data)
+        st.dataframe(df, use_container_width=True)
         
-        base_weight = st.slider("基本関連度重み", 0.0, 1.0, 0.7)
-        industry_weight = st.slider("業界適合度重み", 0.0, 1.0, 0.3)
+    else:
+        # 正常なAPI接続時
+        company_manager = CompanyManager(api)
         
-        st.markdown("**計算式**:")
-        st.code("""
-priority_score = (
-    relevance_score * base_weight + 
-    industry_score * industry_weight
-) + (wifi_bonus if wifi_required else 0)
-        """)
+        # Google Sheetsリンク表示
+        if 'crm_spreadsheet_url' in st.session_state:
+            st.success(f"✅ Google Sheets連携中 | [📊 スプレッドシートを開く]({st.session_state.crm_spreadsheet_url})")
+        
+        # タブ構造での機能表示
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 ダッシュボード", "🏢 企業管理", "📈 分析", "➕ 企業追加", "⚙️ 設定"])
+        
+        with tab1:
+            show_crm_dashboard(company_manager)
+        
+        with tab2:
+            show_company_list_management(company_manager)
+        
+        with tab3:
+            show_crm_analysis(company_manager)
+        
+        with tab4:
+            show_add_company_form(company_manager)
+        
+        with tab5:
+            st.markdown("### ⚙️ CRM設定")
+            st.info("統合システムの設定は統合ダッシュボードで管理されます。")
+            
+            # 設定状況表示
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🔧 接続状況**")
+                if 'crm_spreadsheet_url' in st.session_state:
+                    st.success("✅ Google Sheets接続中")
+                else:
+                    st.warning("⚠️ Google Sheets未接続")
+            
+            with col2:
+                st.markdown("**📊 データ統計**")
+                all_companies = company_manager.get_all_companies()
+                st.metric("登録企業数", len(all_companies))
+
+except Exception as e:
+    st.error(f"🚨 CRMシステムエラー: {str(e)}")
+    st.info("統合ダッシュボードから再度アクセスしてください。")
     
-    # 設定保存
-    if st.button("💾 設定を保存", use_container_width=True):
-        st.success("✅ 設定を保存しました")
-        st.info("新しい設定は次回の同期から適用されます")
-
-# フッター
-st.markdown("---")
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("**🏢 FusionCRM v12.0**")
-    st.caption("企業管理システム")
-
-with col2:
-    st.markdown("**📊 データ統計**")
-    st.caption(f"最終更新: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
-with col3:
-    st.markdown("**🔗 開発**")
-    st.caption("PicoCELA Team")
-
-# 注意事項
-st.info("""
-💡 **開発ノート**: このページは既存の `fusion_crm_main.py` の機能を統合プラットフォーム用に再構築したものです。
-実際の運用では、Google Sheets API、認証システム、データベース処理等の実装が必要です。
-""")
+    # エラー詳細（デバッグ用）
+    with st.expander("🔧 エラー詳細 (開発者向け)"):
+        st.code(str(e))
+        st.markdown("**対処方法:**")
+        st.markdown("1. 統合ダッシュボードに戻る")
+        st.markdown("2. Google Sheets接続を確認")
+        st.markdown("3. ブラウザをリフレッシュ")
