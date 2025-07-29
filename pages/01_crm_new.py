@@ -557,6 +557,21 @@ try:
             
             # オフライン用のダミーマネージャー
             class OfflineCompanyManager:
+                def __init__(self):
+                    # SALES_STATUS定義を追加
+                    self.SALES_STATUS = {
+                        'New': '新規企業',
+                        'Contacted': '初回連絡済み', 
+                        'Replied': '返信あり',
+                        'Engaged': '継続対話中',
+                        'Qualified': '有望企業確定',
+                        'Proposal': '提案書提出済み',
+                        'Negotiation': '契約交渉中',
+                        'Won': '受注成功',
+                        'Lost': '失注',
+                        'Dormant': '休眠中'
+                    }
+                
                 def get_all_companies(self):
                     sample_data = {
                         'company_name': ['ABC建設', 'XYZ工業', 'DEF開発', 'テスト建設株式会社'],
