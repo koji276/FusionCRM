@@ -436,8 +436,28 @@ def main():
             # ダッシュボード機能を直接実装
             st.header("📊 CRMダッシュボード")
             
-            # サンプルデータの取得
-            companies = get_sample_companies()
+            # サンプルデータの直接定義
+            companies = [
+                {
+                    'ID': 1, '企業名': 'ABC建設', 'ステータス': 'Contacted', 
+                    'PicoCELAスコア': 85, '販売員': 'admin', 'WiFi需要': True,
+                    'メール': 'contact@abc-kensetsu.co.jp', '最終更新': '2025-07-28',
+                    '業界': '建設業', '電話番号': '03-1234-5678'
+                },
+                {
+                    'ID': 2, '企業名': 'XYZ工業', 'ステータス': 'Qualified', 
+                    'PicoCELAスコア': 92, '販売員': 'admin', 'WiFi需要': True,
+                    'メール': 'info@xyz-kogyo.co.jp', '最終更新': '2025-07-27',
+                    '業界': '製造業', '電話番号': '06-5678-9012'
+                },
+                {
+                    'ID': 3, '企業名': 'DEF開発', 'ステータス': 'Proposal', 
+                    'PicoCELAスコア': 78, '販売員': 'admin', 'WiFi需要': False,
+                    'メール': 'sales@def-dev.co.jp', '最終更新': '2025-07-26',
+                    '業界': 'IT・ソフトウェア', '電話番号': '03-9876-5432'
+                }
+            ]
+            
             df = pd.DataFrame(companies)
             
             # 統計メトリクス
@@ -486,8 +506,25 @@ def main():
                     key="status_filter_select_tab2"
                 )
             
-            # サンプルデータの取得とフィルタリング
-            companies = get_sample_companies()
+            # サンプルデータの直接定義
+            companies = [
+                {
+                    'ID': 1, '企業名': 'ABC建設', 'ステータス': 'Contacted', 
+                    'PicoCELAスコア': 85, '販売員': 'admin', 'WiFi需要': True,
+                    'メール': 'contact@abc-kensetsu.co.jp', '最終更新': '2025-07-28'
+                },
+                {
+                    'ID': 2, '企業名': 'XYZ工業', 'ステータス': 'Qualified', 
+                    'PicoCELAスコア': 92, '販売員': 'admin', 'WiFi需要': True,
+                    'メール': 'info@xyz-kogyo.co.jp', '最終更新': '2025-07-27'
+                },
+                {
+                    'ID': 3, '企業名': 'DEF開発', 'ステータス': 'Proposal', 
+                    'PicoCELAスコア': 78, '販売員': 'admin', 'WiFi需要': False,
+                    'メール': 'sales@def-dev.co.jp', '最終更新': '2025-07-26'
+                }
+            ]
+            
             df = pd.DataFrame(companies)
             
             # フィルタリング適用
@@ -516,8 +553,13 @@ def main():
             # 分析機能を直接実装
             st.header("📈 分析")
             
-            # サンプルデータの取得
-            companies = get_sample_companies()
+            # サンプルデータの直接定義
+            companies = [
+                {'ステータス': 'Contacted', 'PicoCELAスコア': 85},
+                {'ステータス': 'Qualified', 'PicoCELAスコア': 92},
+                {'ステータス': 'Proposal', 'PicoCELAスコア': 78}
+            ]
+            
             df = pd.DataFrame(companies)
             
             col1, col2 = st.columns(2)
@@ -580,16 +622,24 @@ def main():
                             '備考': notes
                         }
                         
-                        # PicoCELAスコアとWiFi需要の自動計算
-                        picocela_score = calculate_picocela_score(new_company)
-                        wifi_need = determine_wifi_need(new_company)
+                        # PicoCELAスコアの簡単計算
+                        combined_text = f"{company_name} {industry} {notes} {website}".lower()
+                        score = 0
+                        if 'wifi' in combined_text or 'wireless' in combined_text:
+                            score += 30
+                        if 'network' in combined_text or 'mesh' in combined_text:
+                            score += 20
+                        if industry in ["建設業", "製造業"]:
+                            score += 15
+                        
+                        wifi_need = score > 25 or industry in ["建設業", "製造業", "物流業"]
                         
                         # 結果表示
                         st.success("✅ 企業追加しました！")
                         
                         col1, col2, col3 = st.columns(3)
                         with col1:
-                            st.metric("PicoCELA関連度スコア", f"{picocela_score}点")
+                            st.metric("PicoCELA関連度スコア", f"{score}点")
                         with col2:
                             st.metric("WiFi需要判定", "✅ 必要" if wifi_need else "❌ 不要")
                         with col3:
@@ -611,15 +661,13 @@ def main():
             # システム統計
             st.subheader("📊 システム統計")
             
-            companies = get_sample_companies()
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.metric("登録企業数", len(companies))
+                st.metric("登録企業数", 3)
             
             with col2:
-                high_score_companies = len([c for c in companies if c['PicoCELAスコア'] > 80])
-                st.metric("高スコア企業", high_score_companies)
+                st.metric("高スコア企業", 2)
             
             with col3:
                 last_update = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -632,7 +680,13 @@ def main():
             
             with col1:
                 if st.button("📥 CSVエクスポート", key="export_csv_tab5"):
-                    df = pd.DataFrame(companies)
+                    # サンプルデータでCSV作成
+                    sample_data = [
+                        {'企業名': 'ABC建設', 'ステータス': 'Contacted', 'スコア': 85},
+                        {'企業名': 'XYZ工業', 'ステータス': 'Qualified', 'スコア': 92},
+                        {'企業名': 'DEF開発', 'ステータス': 'Proposal', 'スコア': 78}
+                    ]
+                    df = pd.DataFrame(sample_data)
                     csv = df.to_csv(index=False)
                     st.download_button(
                         label="📥 CSVダウンロード",
