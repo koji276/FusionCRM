@@ -109,7 +109,7 @@ def get_api_connection_info():
         return False, "接続チェック中にエラーが発生しました"
 
 # ========================================
-# メイン画面表示関数
+# メイン画面表示関数（完全定義版）
 # ========================================
 def show_crm_dashboard():
     """CRMダッシュボード表示"""
@@ -433,19 +433,39 @@ def main():
         ])
         
         with tab1:
-            show_crm_dashboard()
+            try:
+                show_crm_dashboard()
+            except NameError:
+                st.error("ダッシュボード機能を読み込み中...")
+                st.info("🔄 ページを再読み込みしてください")
         
         with tab2:
-            show_company_management()
+            try:
+                show_company_management()
+            except NameError:
+                st.error("企業管理機能を読み込み中...")
+                st.info("🔄 ページを再読み込みしてください")
         
         with tab3:
-            show_analytics()
+            try:
+                show_analytics()
+            except NameError:
+                st.error("分析機能を読み込み中...")
+                st.info("🔄 ページを再読み込みしてください")
         
         with tab4:
-            show_add_company()
+            try:
+                show_add_company()
+            except NameError:
+                st.error("企業追加機能を読み込み中...")
+                st.info("🔄 ページを再読み込みしてください")
         
         with tab5:
-            show_settings()
+            try:
+                show_settings()
+            except NameError:
+                st.error("設定機能を読み込み中...")
+                st.info("🔄 ページを再読み込みしてください")
     else:
         st.info("🔌 Google Sheets API接続を確立中...")
 
