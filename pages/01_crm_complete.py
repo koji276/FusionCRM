@@ -1,6 +1,6 @@
-# pages/01_crm_fixed.py - エラー修正版
-# Updated: 2025-07-29 - No more function errors
-# Self-contained CRM System
+# pages/01_crm_final.py - Google Sheetsデータ構造対応版
+# Updated: 2025-07-29 - Real Google Sheets data structure support
+# Complete CRM System with actual data format
 
 import streamlit as st
 import pandas as pd
@@ -9,18 +9,17 @@ import requests
 import json
 
 # ========================================
-# エラー防止：最初に全ての関数を定義
+# デバッグメッセージ（更新確認用）
 # ========================================
-
-st.error("🚨 修正版: この赤いメッセージが表示されていれば、最新版が反映されています。")
-st.success("✅ エラー修正版 - 全機能自己完結型")
+st.error("🚨 最終版: Google Sheetsデータ構造に完全対応した版です")
+st.success("✅ 実データ形式対応版 - FUSIONDRIVER・Wyebot等の実企業データ表示")
 
 # ========================================
 # CRM管理システム - メイン実装
 # ========================================
 
 # タイトル表示
-st.title("🏢 CRM管理システム - 完全版")
+st.title("🏢 CRM管理システム - 最終版")
 st.caption("企業データ管理・ステータス追跡・PicoCELA関連度分析・Google Sheets完全連携")
 
 # Google Sheets連携情報
@@ -51,6 +50,12 @@ try:
             google_sheets_companies = data['data']
             st.success(f"✅ Google Sheets連携成功！{len(google_sheets_companies)}社のデータを取得")
             google_sheets_success = True
+            
+            # デバッグ情報：実際のデータ構造を表示
+            if google_sheets_companies:
+                first_company_keys = list(google_sheets_companies[0].keys())
+                st.info(f"📋 取得データ構造: {', '.join(first_company_keys[:8])}...")
+                
         else:
             google_sheets_companies = []
             google_sheets_success = False
@@ -71,77 +76,125 @@ except Exception as e:
 
 sample_companies = [
     {
-        'ID': 1, '企業名': 'ABC建設株式会社', 'ステータス': 'Contacted', 
-        'PicoCELAスコア': 85, 'WiFi需要': '✅ 必要', '販売員': 'admin',
-        'メール': 'contact@abc-construction.com', '業界': '建設業',
-        'ウェブサイト': 'https://abc-construction.com',
-        '備考': 'Large construction sites requiring WiFi mesh networks',
-        '登録日': '2025-07-20'
+        'company_id': 'SAMPLE_001',
+        'company_name': 'ABC建設株式会社',
+        'contact_name': '田中太郎',
+        'email': 'contact@abc-construction.com',
+        'phone': '03-1234-5678',
+        'website': 'https://abc-construction.com',
+        'description': 'Large construction sites requiring WiFi mesh networks for project management and communication',
+        'construction_focus': 'High',
+        'wifi_needs': 'High',
+        'picoCELA_relevance': 85,
+        'priority_score': 90,
+        'sales_status': 'Contacted',
+        'created_at': '2025-07-20T10:00:00Z',
+        'updated_at': '2025-07-25T15:30:00Z',
+        'tags': 'construction,wifi,mesh'
     },
     {
-        'ID': 2, '企業名': 'FUSIONDRIVER', 'ステータス': 'Engaged', 
-        'PicoCELAスコア': 95, 'WiFi需要': '✅ 必要', '販売員': 'admin',
-        'メール': 'koji@fusiondriver.biz', '業界': 'IT・ソフトウェア',
-        'ウェブサイト': 'https://fusiondriver.biz',
-        '備考': 'High-tech company with advanced networking needs',
-        '登録日': '2025-07-15'
-    },
-    {
-        'ID': 3, '企業名': 'XYZ製造工業', 'ステータス': 'Qualified', 
-        'PicoCELAスコア': 92, 'WiFi需要': '✅ 必要', '販売員': 'admin',
-        'メール': 'info@xyz-manufacturing.com', '業界': '製造業',
-        'ウェブサイト': 'https://xyz-manufacturing.com',
-        '備考': 'Factory floor needs wireless network coverage',
-        '登録日': '2025-07-22'
-    },
-    {
-        'ID': 4, '企業名': 'DEFソフトウェア', 'ステータス': 'Proposal', 
-        'PicoCELAスコア': 78, 'WiFi需要': '❌ 不要', '販売員': 'admin',
-        'メール': 'contact@def-software.com', '業界': 'IT・ソフトウェア',
-        'ウェブサイト': 'https://def-software.com',
-        '備考': 'Software development company with office WiFi',
-        '登録日': '2025-07-25'
+        'company_id': 'SAMPLE_002',
+        'company_name': 'FUSIONDRIVER',
+        'contact_name': 'Koji Tokuda',
+        'email': 'koji@fusiondriver.biz',
+        'phone': '408-850-5058',
+        'website': 'https://fusiondriver.biz',
+        'description': 'We are implementing a Wi-Fi-based solution integration for construction sites.',
+        'construction_focus': 'Low',
+        'wifi_needs': 'High',
+        'picoCELA_relevance': 95,
+        'priority_score': 100,
+        'sales_status': 'Engaged',
+        'created_at': '2025-07-15T08:00:00Z',
+        'updated_at': '2025-07-29T12:00:00Z',
+        'tags': 'software,innovation,wifi'
     }
 ]
 
 # ========================================
-# データソース決定
+# データ正規化（実際のGoogle Sheets構造に対応）
+# ========================================
+
+def normalize_google_sheets_data(companies):
+    """Google Sheetsの実際のデータ構造を日本語表示用に正規化"""
+    normalized = []
+    
+    for company in companies:
+        # WiFi需要の判定
+        wifi_needs = str(company.get('wifi_needs', '')).lower()
+        if wifi_needs in ['high', 'medium']:
+            wifi_display = '✅ 必要'
+        elif wifi_needs in ['low']:
+            wifi_display = '❌ 不要'
+        else:
+            wifi_display = '❓ 未確認'
+        
+        # ステータスの正規化
+        status = company.get('sales_status', 'New')
+        if status in ['New', 'Contacted', 'Replied', 'Engaged', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost']:
+            status_display = status
+        else:
+            status_display = 'New'
+        
+        # 業界判定（descriptionやtagsから推測）
+        description = str(company.get('description', '')).lower()
+        tags = str(company.get('tags', '')).lower()
+        text_content = f"{description} {tags}"
+        
+        if any(word in text_content for word in ['construction', 'building', 'site']):
+            industry = '建設業'
+        elif any(word in text_content for word in ['manufacturing', 'factory', 'industrial']):
+            industry = '製造業'
+        elif any(word in text_content for word in ['software', 'tech', 'ai', 'platform']):
+            industry = 'IT・ソフトウェア'
+        elif any(word in text_content for word in ['healthcare', 'medical', 'hospital']):
+            industry = '医療・介護'
+        elif any(word in text_content for word in ['education', 'school', 'university']):
+            industry = '教育'
+        else:
+            industry = 'その他'
+        
+        normalized_company = {
+            'ID': company.get('company_id', f"ID_{len(normalized)+1}"),
+            '企業名': company.get('company_name', 'N/A'),
+            'ステータス': status_display,
+            'PicoCELAスコア': int(company.get('picoCELA_relevance', 0)) if company.get('picoCELA_relevance') else 0,
+            'WiFi需要': wifi_display,
+            '販売員': 'admin',  # デフォルト値
+            'メール': company.get('email', ''),
+            '業界': industry,
+            'ウェブサイト': company.get('website', ''),
+            '備考': company.get('description', '')[:100] + '...' if len(str(company.get('description', ''))) > 100 else company.get('description', ''),
+            '登録日': company.get('created_at', '')[:10] if company.get('created_at') else datetime.now().strftime('%Y-%m-%d'),
+            '連絡先': company.get('contact_name', ''),
+            '電話番号': company.get('phone', ''),
+            '優先度スコア': int(company.get('priority_score', 0)) if company.get('priority_score') else 0,
+            'タグ': company.get('tags', ''),
+            '建設関連度': company.get('construction_focus', 'Low')
+        }
+        
+        normalized.append(normalized_company)
+    
+    return normalized
+
+# ========================================
+# データソース決定と正規化
 # ========================================
 
 if google_sheets_success and google_sheets_companies:
-    # Google Sheetsデータを正規化
-    companies_data = []
-    for company in google_sheets_companies:
-        normalized = {
-            'ID': company.get('company_id') or company.get('ID') or len(companies_data) + 1,
-            '企業名': company.get('company_name') or company.get('企業名') or 'N/A',
-            'ステータス': company.get('sales_status') or company.get('ステータス') or 'New',
-            'PicoCELAスコア': company.get('picocela_relevance') or company.get('PicoCELAスコア') or 0,
-            'WiFi需要': company.get('wifi_needs') or company.get('WiFi需要') or 'Unknown',
-            '販売員': company.get('salesperson') or company.get('販売員') or 'admin',
-            'メール': company.get('email') or company.get('メール') or '',
-            '業界': company.get('industry') or company.get('業界') or 'その他',
-            'ウェブサイト': company.get('website_url') or company.get('ウェブサイト') or '',
-            '備考': company.get('notes') or company.get('備考') or '',
-            '登録日': company.get('created_date') or company.get('登録日') or datetime.now().strftime('%Y-%m-%d')
-        }
-        
-        # WiFi需要の表示形式を統一
-        wifi_need = str(normalized['WiFi需要']).lower()
-        if wifi_need in ['high', 'medium', 'yes', 'true', '1']:
-            normalized['WiFi需要'] = '✅ 必要'
-        elif wifi_need in ['low', 'no', 'false', '0']:
-            normalized['WiFi需要'] = '❌ 不要'
-        else:
-            normalized['WiFi需要'] = '❓ 未確認'
-            
-        companies_data.append(normalized)
-    
+    # Google Sheetsからの実データを正規化
+    companies_data = normalize_google_sheets_data(google_sheets_companies)
     data_source = f"Google Sheets ({len(companies_data)}社)"
     st.success(f"🔗 リアルデータ表示中: {data_source}")
+    
+    # 取得した企業名をサンプル表示
+    if companies_data:
+        company_names = [c['企業名'] for c in companies_data[:5]]
+        st.info(f"📊 取得企業例: {', '.join(company_names)}{'...' if len(companies_data) > 5 else ''}")
+        
 else:
-    # サンプルデータを使用
-    companies_data = sample_companies
+    # サンプルデータを正規化
+    companies_data = normalize_google_sheets_data(sample_companies)
     data_source = f"サンプルデータ ({len(companies_data)}社)"
     st.info(f"📋 オフラインモード: {data_source}")
 
@@ -189,14 +242,21 @@ with tab1:
     st.subheader("📋 企業データ一覧")
     
     if companies_data:
-        display_df = pd.DataFrame(companies_data)
-        key_columns = ['企業名', 'ステータス', 'PicoCELAスコア', 'WiFi需要', '業界', '販売員']
-        available_columns = [col for col in key_columns if col in display_df.columns]
+        # 表示用データフレーム作成
+        display_data = []
+        for company in companies_data:
+            display_data.append({
+                '企業名': company['企業名'],
+                'ステータス': company['ステータス'],
+                'PicoCELAスコア': company['PicoCELAスコア'],
+                'WiFi需要': company['WiFi需要'],
+                '業界': company['業界'],
+                'メール': company['メール'],
+                '登録日': company['登録日']
+            })
         
-        if available_columns:
-            st.dataframe(display_df[available_columns], use_container_width=True)
-        else:
-            st.dataframe(display_df, use_container_width=True)
+        display_df = pd.DataFrame(display_data)
+        st.dataframe(display_df, use_container_width=True)
     else:
         st.warning("表示するデータがありません")
 
@@ -237,18 +297,22 @@ with tab2:
                 st.write(f"**企業名**: {company.get('企業名', 'N/A')}")
                 st.write(f"**ステータス**: {company.get('ステータス', 'N/A')}")
                 st.write(f"**PicoCELAスコア**: {company.get('PicoCELAスコア', 'N/A')}")
+                st.write(f"**優先度スコア**: {company.get('優先度スコア', 'N/A')}")
             
             with col2:
                 st.write(f"**WiFi需要**: {company.get('WiFi需要', 'N/A')}")
                 st.write(f"**業界**: {company.get('業界', 'N/A')}")
-                st.write(f"**販売員**: {company.get('販売員', 'N/A')}")
+                st.write(f"**連絡先**: {company.get('連絡先', 'N/A')}")
+                st.write(f"**電話番号**: {company.get('電話番号', 'N/A')}")
                 st.write(f"**登録日**: {company.get('登録日', 'N/A')}")
             
             with col3:
                 st.write(f"**メール**: {company.get('メール', 'N/A')}")
                 st.write(f"**ウェブサイト**: {company.get('ウェブサイト', 'N/A')}")
+                st.write(f"**建設関連度**: {company.get('建設関連度', 'N/A')}")
+                st.write(f"**タグ**: {company.get('タグ', 'N/A')}")
                 
-                if company.get('ウェブサイト') and company['ウェブサイト'] != 'N/A':
+                if company.get('ウェブサイト') and company['ウェブサイト'] not in ['N/A', '']:
                     st.markdown(f"[🔗 ウェブサイトを開く]({company['ウェブサイト']})")
             
             if company.get('備考'):
@@ -300,6 +364,16 @@ with tab3:
     
     if industry_counts:
         st.bar_chart(industry_counts)
+    
+    # WiFi需要分析
+    st.subheader("📶 WiFi需要分析")
+    wifi_counts = {}
+    for company in companies_data:
+        wifi_need = company.get('WiFi需要', '❓ 未確認')
+        wifi_counts[wifi_need] = wifi_counts.get(wifi_need, 0) + 1
+    
+    if wifi_counts:
+        st.bar_chart(wifi_counts)
 
 with tab4:
     # 企業追加
@@ -313,63 +387,77 @@ with tab4:
         with col1:
             company_name = st.text_input("企業名 *", key="add_company_name")
             email = st.text_input("メールアドレス", key="add_email")
+            contact_name = st.text_input("連絡先担当者", key="add_contact")
             industry = st.selectbox("業界", 
                 ["建設業", "製造業", "IT・ソフトウェア", "金融業", "小売業", "不動産業", "物流業", "医療・介護", "教育", "その他"], 
                 key="add_industry")
         
         with col2:
+            phone = st.text_input("電話番号", key="add_phone")
             website = st.text_input("ウェブサイト", key="add_website")
             status = st.selectbox("初期ステータス", 
                 ["New", "Contacted", "Replied", "Engaged", "Qualified", "Proposal", "Negotiation"], 
                 key="add_status")
+            wifi_needs = st.selectbox("WiFi需要レベル", ["High", "Medium", "Low"], key="add_wifi_needs")
         
-        notes = st.text_area("備考・特記事項", key="add_notes", height=100)
+        description = st.text_area("企業説明・特記事項", key="add_description", height=100)
+        tags = st.text_input("タグ（カンマ区切り）", key="add_tags", placeholder="例: construction,wifi,technology")
         
         submit_button = st.form_submit_button("🚀 企業を追加")
         
         if submit_button and company_name:
             # スコア計算
-            score = 0
-            notes_lower = notes.lower()
+            picocela_score = 0
+            priority_score = 0
+            description_lower = description.lower()
             
             # キーワードベーススコア
             wifi_keywords = ['wifi', 'wireless', 'network', 'mesh', 'connectivity', 'internet', 'iot', 'smart', 'automation']
             for keyword in wifi_keywords:
-                if keyword in notes_lower:
-                    score += 10
+                if keyword in description_lower:
+                    picocela_score += 12
             
             construction_keywords = ['construction', 'building', 'site', 'facility', 'warehouse', 'factory']
             for keyword in construction_keywords:
-                if keyword in notes_lower:
-                    score += 8
+                if keyword in description_lower:
+                    picocela_score += 10
             
             # 業界ボーナス
             industry_bonus = {
                 "建設業": 25, "製造業": 20, "物流業": 18, 
                 "不動産業": 15, "IT・ソフトウェア": 10, "金融業": 5
             }
-            score += industry_bonus.get(industry, 0)
+            picocela_score += industry_bonus.get(industry, 0)
             
-            score = min(score, 100)  # 最大100点
+            # WiFi需要レベルによる調整
+            wifi_bonus = {"High": 20, "Medium": 10, "Low": 0}
+            picocela_score += wifi_bonus.get(wifi_needs, 0)
             
-            # WiFi需要判定
-            wifi_need = "✅ 必要" if score >= 40 else "❌ 不要"
+            picocela_score = min(picocela_score, 100)  # 最大100点
+            priority_score = min(picocela_score + 10, 100)  # 優先度スコアは少し高めに設定
+            
+            # WiFi需要表示形式
+            wifi_display = f"{'✅ 必要' if wifi_needs in ['High', 'Medium'] else '❌ 不要'}"
             
             # 結果表示
             st.success("✅ 企業追加完了！")
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("PicoCELA関連度", f"{score}点")
+                st.metric("PicoCELA関連度", f"{picocela_score}点")
             with col2:
-                st.metric("WiFi需要判定", wifi_need)
+                st.metric("優先度スコア", f"{priority_score}点")
             with col3:
+                st.metric("WiFi需要判定", wifi_display)
+            with col4:
                 st.metric("追加日時", datetime.now().strftime("%Y-%m-%d"))
             
             # 企業情報表示
             st.info(f"**企業名**: {company_name} | **業界**: {industry} | **ステータス**: {status}")
-            if notes:
-                st.write(f"**備考**: {notes}")
+            if description:
+                st.write(f"**説明**: {description}")
+            if tags:
+                st.write(f"**タグ**: {tags}")
 
 with tab5:
     # システム設定
@@ -386,7 +474,7 @@ with tab5:
             st.error("❌ Google Sheets API接続失敗")
     
     with col2:
-        st.metric("データソース", data_source.split('(')[0])
+        st.metric("データソース", "Google Sheets" if google_sheets_success else "オフライン")
     
     # システム統計
     st.subheader("📊 システム統計")
@@ -395,7 +483,8 @@ with tab5:
     with col1:
         st.metric("総企業数", len(companies_data))
     with col2:
-        st.metric("データソース", "Google Sheets" if google_sheets_success else "オフライン")
+        high_priority = len([c for c in companies_data if int(c.get('優先度スコア', 0)) >= 80])
+        st.metric("高優先度企業", high_priority)
     with col3:
         st.metric("最終更新", datetime.now().strftime("%H:%M"))
     with col4:
@@ -414,3 +503,12 @@ with tab5:
             mime='text/csv'
         )
         st.success("✅ CSVファイルの準備が完了しました！")
+    
+    # データ構造情報
+    if google_sheets_success and companies_data:
+        st.subheader("📋 データ構造情報")
+        st.info("Google Sheetsから取得したデータの構造:")
+        
+        sample_company = companies_data[0] if companies_data else {}
+        for key, value in list(sample_company.items())[:10]:  # 最初の10項目を表示
+            st.text(f"• {key}: {str(value)[:50]}{'...' if len(str(value)) > 50 else ''}")
