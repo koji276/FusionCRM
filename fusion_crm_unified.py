@@ -575,6 +575,64 @@ class FusionCRMUnified:
             - モジュール: 12ファイル構成
             """)
 
+# fusion_crm_unified.py の main() 関数の最初に追加
+
+def emergency_admin_recovery():
+    """緊急管理者アカウント復旧"""
+    import sqlite3
+    import hashlib
+    from datetime import datetime
+    
+    try:
+        # データベース接続
+        conn = sqlite3.connect('fusion_users.db')
+        cursor = conn.cursor()
+        
+        # テーブル作成（存在しない場合）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'user',
+                created_at TEXT NOT NULL,
+                is_approved INTEGER DEFAULT 0
+            )
+        ''')
+        
+        # 管理者アカウントが存在するかチェック
+        cursor.execute("SELECT COUNT(*) FROM users WHERE username = ?", ('admin',))
+        admin_exists = cursor.fetchone()[0] > 0
+        
+        if not admin_exists:
+            # 管理者アカウントを強制作成
+            password_hash = hashlib.sha256('admin123'.encode()).hexdigest()
+            cursor.execute('''
+                INSERT INTO users (username, email, password_hash, role, created_at, is_approved)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', ('admin', 'koji.tokuda@gmail.com', password_hash, 'admin', datetime.now().isoformat(), 1))
+            
+            conn.commit()
+            st.sidebar.success("🚑 緊急管理者アカウントを復旧しました")
+            st.sidebar.info("ID: admin / PW: admin123")
+        
+        conn.close()
+        return True
+        
+    except Exception as e:
+        st.sidebar.error(f"復旧エラー: {str(e)}")
+        return False
+
+# main() 関数の最初に追加
+def main():
+    # 緊急復旧実行
+    if st.sidebar.button("🚑 緊急管理者復旧"):
+        emergency_admin_recovery()
+    
+    # 既存のmain()の内容...
+
+
 def main():
     """アプリケーションのメインエントリーポイント"""
     try:
