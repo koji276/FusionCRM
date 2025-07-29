@@ -104,9 +104,44 @@ def check_google_sheets_connection():
 def get_api_connection_info():
     """API接続情報を安全に取得"""
     try:
-        return check_google_sheets_connection()
-    except:
-        return False, "接続チェック中にエラーが発生しました"
+        # Google Apps Script URL（固定設定）
+        google_apps_script_url = "https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec"
+        
+        # 接続テスト
+        test_response = requests.get(f"{google_apps_script_url}?action=test", timeout=10)
+        
+        if test_response.status_code == 200:
+            return True, google_apps_script_url
+        else:
+            return False, f"接続エラー: {test_response.status_code}"
+            
+    except Exception as e:
+        return False, f"接続テスト失敗: {str(e)}"
+
+def get_real_companies_data():
+    """Google Sheetsから実際の企業データを取得"""
+    try:
+        api_connected, api_url = get_api_connection_info()
+        
+        if not api_connected:
+            return None
+            
+        # Google Sheetsから企業データ取得
+        response = requests.post(
+            api_url,
+            json={"action": "get_companies"},
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success'):
+                return data.get('companies', [])
+                
+    except Exception as e:
+        st.error(f"Google Sheets接続エラー: {str(e)}")
+        
+    return None
 
 # ========================================
 # メイン画面表示関数（完全定義版）
@@ -436,27 +471,33 @@ def main():
             # ダッシュボード機能を直接実装
             st.header("📊 CRMダッシュボード")
             
-            # サンプルデータの直接定義
-            companies = [
-                {
-                    'ID': 1, '企業名': 'ABC建設', 'ステータス': 'Contacted', 
-                    'PicoCELAスコア': 85, '販売員': 'admin', 'WiFi需要': True,
-                    'メール': 'contact@abc-kensetsu.co.jp', '最終更新': '2025-07-28',
-                    '業界': '建設業', '電話番号': '03-1234-5678'
-                },
-                {
-                    'ID': 2, '企業名': 'XYZ工業', 'ステータス': 'Qualified', 
-                    'PicoCELAスコア': 92, '販売員': 'admin', 'WiFi需要': True,
-                    'メール': 'info@xyz-kogyo.co.jp', '最終更新': '2025-07-27',
-                    '業界': '製造業', '電話番号': '06-5678-9012'
-                },
-                {
-                    'ID': 3, '企業名': 'DEF開発', 'ステータス': 'Proposal', 
-                    'PicoCELAスコア': 78, '販売員': 'admin', 'WiFi需要': False,
-                    'メール': 'sales@def-dev.co.jp', '最終更新': '2025-07-26',
-                    '業界': 'IT・ソフトウェア', '電話番号': '03-9876-5432'
-                }
-            ]
+            # 実際のGoogle Sheetsデータを取得
+            real_companies = get_real_companies_data()
+            
+            if real_companies is not None:
+                # リアルデータを使用
+                companies = real_companies
+                st.success(f"✅ Google Sheets連携中 - {len(companies)}社のデータを取得")
+            else:
+                # フォールバックとしてサンプルデータを使用
+                companies = [
+                    {
+                        'company_id': 'ENR_1752934110', 'company_name': 'FUSIONDRIVER', 
+                        'sales_status': 'Contacted', 'picoCELA_relevance': 85, 
+                        'wifi_needs': 'Low', 'email': 'koji@fusiondriver.com'
+                    },
+                    {
+                        'company_id': 'ENR_1752953392', 'company_name': 'Wyebot',
+                        'sales_status': 'Qualified', 'picoCELA_relevance': 92,
+                        'wifi_needs': 'High', 'email': 'info@wyebot.com'
+                    },
+                    {
+                        'company_id': 'ENR_1752953393', 'company_name': 'Delta Electronics',
+                        'sales_status': 'Proposal', 'picoCELA_relevance': 78,
+                        'wifi_needs': 'Low', 'email': 'info@delta-americas.com'
+                    }
+                ]
+                st.warning("⚠️ オフラインモード - サンプルデータを表示中")
             
             df = pd.DataFrame(companies)
             
@@ -467,25 +508,48 @@ def main():
                 st.metric("📈 総企業数", len(df))
             
             with col2:
-                wifi_needed = len(df[df['WiFi需要'] == True])
+                if 'wifi_needs' in df.columns:
+                    wifi_needed = len(df[df['wifi_needs'].isin(['High', 'Medium'])])
+                else:
+                    wifi_needed = len(df) // 2  # フォールバック
                 st.metric("📶 WiFi需要企業", wifi_needed, f"{wifi_needed/len(df)*100:.1f}%")
             
             with col3:
-                picocela_related = len(df[df['PicoCELAスコア'] > 70])
+                if 'picoCELA_relevance' in df.columns:
+                    picocela_related = len(df[df['picoCELA_relevance'] > 70])
+                else:
+                    picocela_related = len(df)
                 st.metric("🎯 PicoCELA関連", picocela_related, f"{picocela_related/len(df)*100:.1f}%")
             
             with col4:
                 st.metric("🎯 今月目標", 15)
             
             # 最新企業データ
-            st.subheader("📋 最新企業データ（上位3社）")
+            st.subheader("📋 最新企業データ（上位10社）")
             
             # データ表示のフォーマット調整
-            display_df = df.copy()
-            display_df['WiFi需要'] = display_df['WiFi需要'].map({True: '✅', False: '❌'})
+            display_df = df.head(10).copy()
+            
+            # WiFi需要の表示調整
+            if 'wifi_needs' in display_df.columns:
+                display_df['WiFi需要'] = display_df['wifi_needs'].map({
+                    'High': '✅ 高', 'Medium': '⚠️ 中', 'Low': '❌ 低', 'Critical': '🔥 重要'
+                })
+            else:
+                display_df['WiFi需要'] = '❌'
+            
+            # 企業名とステータスを表示
+            display_columns = []
+            if 'company_name' in display_df.columns:
+                display_columns.append('company_name')
+            if 'sales_status' in display_df.columns:
+                display_columns.append('sales_status')
+            if 'picoCELA_relevance' in display_df.columns:
+                display_columns.append('picoCELA_relevance')
+            display_columns.append('WiFi需要')
             
             st.dataframe(
-                display_df[['企業名', 'ステータス', 'PicoCELAスコア', 'WiFi需要', '最終更新']],
+                display_df[display_columns] if display_columns else display_df,
                 use_container_width=True
             )
         
