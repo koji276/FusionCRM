@@ -101,6 +101,13 @@ def check_google_sheets_connection():
     except Exception as e:
         return False, str(e)
 
+def get_api_connection_info():
+    """API接続情報を安全に取得"""
+    try:
+        return check_google_sheets_connection()
+    except:
+        return False, "接続チェック中にエラーが発生しました"
+
 # ========================================
 # メイン画面表示関数
 # ========================================
@@ -324,8 +331,11 @@ def show_settings():
     """設定画面表示"""
     st.header("⚙️ 設定")
     
-    # API接続状況
-    api_connected, api_info = check_google_sheets_connection()
+    # API接続状況（安全なチェック）
+    try:
+        api_connected, api_info = get_api_connection_info()
+    except:
+        api_connected, api_info = False, "設定エラー"
     
     st.subheader("🔌 Google Sheets連携")
     
@@ -395,8 +405,11 @@ def main():
     # Google Sheets API診断
     st.info("🔍 統合プラットフォーム・サイドバーから各ページに移動できます | Google Sheetsで更にリアルタイム同期")
     
-    # API接続チェック
-    api_connected, api_info = check_google_sheets_connection()
+    # API接続チェック（安全な呼び出し）
+    try:
+        api_connected, api_info = get_api_connection_info()
+    except:
+        api_connected, api_info = False, "接続エラー"
     
     if not api_connected:
         st.warning("⚠️ Google Sheets APIに接続できません")
