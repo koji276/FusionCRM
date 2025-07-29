@@ -1,6 +1,6 @@
-# pages/01_crm_new.py - エラー修正版
-# Updated: 2025-07-29 - エラー修正・安定化版
-# Force deployment trigger - Error fix version
+# pages/01_crm_new.py - Google Sheets連携修正版
+# Updated: 2025-07-29 - Google Sheets API連携実装
+# Force deployment trigger - Google Sheets integration fix
 
 import streamlit as st
 import pandas as pd
@@ -11,95 +11,44 @@ import requests
 import json
 
 # ========================================
-# 定数定義（エラー修正）
+# Google Sheets API連携関数
 # ========================================
-SALES_STATUS = [
-    "New", "Contacted", "Replied", "Engaged", 
-    "Qualified", "Proposal", "Negotiation", "Won", "Lost", "On Hold"
-]
 
-INDUSTRIES = [
-    "建設業", "製造業", "IT・ソフトウェア", "金融業", "小売業", 
-    "不動産業", "物流業", "医療・介護", "教育", "その他"
-]
-
-PICOCELA_KEYWORDS = [
-    "wifi", "wireless", "mesh", "network", "internet", "connectivity",
-    "建設現場", "工場", "倉庫", "オフィス", "店舗", "病院", "学校"
-]
-
-# ========================================
-# ヘルパー関数
-# ========================================
-def calculate_picocela_score(company_data):
-    """PicoCELA関連度スコアを計算"""
-    score = 0
-    text_fields = [
-        company_data.get('企業名', ''),
-        company_data.get('業界', ''),
-        company_data.get('備考', ''),
-        company_data.get('ウェブサイト', '')
-    ]
-    
-    combined_text = ' '.join(text_fields).lower()
-    
-    for keyword in PICOCELA_KEYWORDS:
-        if keyword.lower() in combined_text:
-            if keyword in ["wifi", "wireless", "mesh"]:
-                score += 30
-            elif keyword in ["network", "connectivity"]:
-                score += 20
-            else:
-                score += 10
-    
-    return min(score, 110)
-
-def determine_wifi_need(company_data):
-    """WiFi需要を自動判定"""
-    score = calculate_picocela_score(company_data)
-    industry = company_data.get('業界', '')
-    
-    if score > 50:
-        return True
-    
-    high_need_industries = ["建設業", "製造業", "物流業", "医療・介護"]
-    return industry in high_need_industries
-
-def get_sample_companies():
-    """サンプル企業データを生成"""
-    return [
-        {
-            'ID': 1, '企業名': 'ABC建設', 'ステータス': 'Contacted', 
-            'PicoCELAスコア': 85, '販売員': 'admin', 'WiFi需要': True,
-            'メール': 'contact@abc-kensetsu.co.jp', '最終更新': '2025-07-28',
-            '業界': '建設業', '電話番号': '03-1234-5678'
-        },
-        {
-            'ID': 2, '企業名': 'XYZ工業', 'ステータス': 'Qualified', 
-            'PicoCELAスコア': 92, '販売員': 'admin', 'WiFi需要': True,
-            'メール': 'info@xyz-kogyo.co.jp', '最終更新': '2025-07-27',
-            '業界': '製造業', '電話番号': '06-5678-9012'
-        },
-        {
-            'ID': 3, '企業名': 'DEF開発', 'ステータス': 'Proposal', 
-            'PicoCELAスコア': 78, '販売員': 'admin', 'WiFi需要': False,
-            'メール': 'sales@def-dev.co.jp', '最終更新': '2025-07-26',
-            '業界': 'IT・ソフトウェア', '電話番号': '03-9876-5432'
-        }
-    ]
-
-def check_google_sheets_connection():
-    """Google Sheets API接続をチェック"""
+def get_real_companies_data():
+    """Google SheetsからリアルCRMデータを取得"""
     try:
-        # 統合ダッシュボードのAPI設定を確認
-        if hasattr(st.session_state, 'google_apps_script_url') and st.session_state.google_apps_script_url:
-            return True, st.session_state.google_apps_script_url
+        # Google Apps Script URL
+        google_apps_script_url = "https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec"
         
-        # 環境変数やその他の設定を確認
-        # TODO: 実際のAPI設定ロジックを実装
-        return False, None
+        # APIに企業データ取得リクエスト
+        response = requests.get(
+            google_apps_script_url,
+            params={"action": "get_companies"},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success') and data.get('data'):
+                companies = data['data']
+                st.success(f"✅ Google Sheets連携成功 - {len(companies)}社のデータを取得")
+                return companies
+            else:
+                st.warning("⚠️ Google Sheetsにデータが見つかりません")
+                return None
+        else:
+            st.error(f"❌ Google Sheets API接続エラー: {response.status_code}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        st.warning("⏰ Google Sheets API接続タイムアウト")
+        return None
+    except requests.exceptions.RequestException as e:
+        st.warning(f"🌐 Google Sheets API接続失敗: {str(e)}")
+        return None
     except Exception as e:
-        return False, str(e)
+        st.error(f"❌ Google Sheets データ取得エラー: {str(e)}")
+        return None
 
 def get_api_connection_info():
     """API接続情報を安全に取得"""
@@ -107,358 +56,79 @@ def get_api_connection_info():
         # Google Apps Script URL（固定設定）
         google_apps_script_url = "https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec"
         
-        # 接続テスト
-        test_response = requests.get(f"{google_apps_script_url}?action=test", timeout=10)
-        
-        if test_response.status_code == 200:
-            return True, google_apps_script_url
-        else:
-            return False, f"接続エラー: {test_response.status_code}"
-            
-    except Exception as e:
-        return False, f"接続テスト失敗: {str(e)}"
-
-def get_real_companies_data():
-    """Google Sheetsから実際の企業データを取得"""
-    try:
-        api_connected, api_url = get_api_connection_info()
-        
-        if not api_connected:
-            return None
-            
-        # Google Sheetsから企業データ取得
-        response = requests.post(
-            api_url,
-            json={"action": "get_companies"},
-            timeout=15
-        )
-        
+        # 簡単な接続テスト
+        response = requests.get(google_apps_script_url, params={"action": "test"}, timeout=5)
         if response.status_code == 200:
-            data = response.json()
-            if data.get('success'):
-                return data.get('companies', [])
-                
+            return True, f"Google Sheets API 接続正常 ({google_apps_script_url[:50]}...)"
+        else:
+            return False, f"API接続エラー: {response.status_code}"
+            
     except Exception as e:
-        st.error(f"Google Sheets接続エラー: {str(e)}")
-        
-    return None
+        return False, f"接続テストエラー: {str(e)}"
 
 # ========================================
-# メイン画面表示関数（完全定義版）
+# サンプルデータ生成関数（フォールバック用）
 # ========================================
-def show_crm_dashboard():
-    """CRMダッシュボード表示"""
-    st.header("📊 CRMダッシュボード")
-    
-    # サンプルデータの取得
-    companies = get_sample_companies()
-    df = pd.DataFrame(companies)
-    
-    # 統計メトリクス
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("📈 総企業数", len(df))
-    
-    with col2:
-        wifi_needed = len(df[df['WiFi需要'] == True])
-        st.metric("📶 WiFi需要企業", wifi_needed, f"{wifi_needed/len(df)*100:.1f}%")
-    
-    with col3:
-        picocela_related = len(df[df['PicoCELAスコア'] > 70])
-        st.metric("🎯 PicoCELA関連", picocela_related, f"{picocela_related/len(df)*100:.1f}%")
-    
-    with col4:
-        st.metric("🎯 今月目標", 15)
-    
-    # サンプルデータ追加ボタン
-    if st.button("🚀 サンプルデータを追加", key="add_sample_data_dashboard"):
-        st.success("サンプルデータが追加されました！")
-        st.rerun()
-    
-    # 最新企業データ
-    st.subheader("📋 最新企業データ（上位10社）")
-    
-    # データ表示のフォーマット調整
-    display_df = df.copy()
-    display_df['WiFi需要'] = display_df['WiFi需要'].map({True: '✅', False: '❌'})
-    
-    st.dataframe(
-        display_df[['企業名', 'ステータス', 'PicoCELAスコア', 'WiFi需要', '最終更新']],
-        use_container_width=True
-    )
 
-def show_company_management():
-    """企業管理画面表示"""
-    st.header("🏢 企業管理")
-    
-    # 検索・フィルター機能
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        search_term = st.text_input("🔍 企業名検索", key="company_search_input")
-    
-    with col2:
-        status_filter = st.selectbox(
-            "ステータスフィルター", 
-            ["全て"] + SALES_STATUS,
-            key="status_filter_select"
-        )
-    
-    col3, col4 = st.columns(2)
-    
-    with col3:
-        score_range = st.slider(
-            "PicoCELAスコア範囲", 
-            0, 110, (0, 110),
-            key="score_range_slider"
-        )
-    
-    with col4:
-        wifi_filter = st.selectbox(
-            "WiFi需要フィルター",
-            ["全て", "WiFi必要", "WiFi不要"],
-            key="wifi_filter_select"
-        )
-    
-    # サンプルデータの取得とフィルタリング
-    companies = get_sample_companies()
-    df = pd.DataFrame(companies)
-    
-    # フィルタリング適用
-    if search_term:
-        df = df[df['企業名'].str.contains(search_term, case=False, na=False)]
-    
-    if status_filter != "全て":
-        df = df[df['ステータス'] == status_filter]
-    
-    df = df[
-        (df['PicoCELAスコア'] >= score_range[0]) & 
-        (df['PicoCELAスコア'] <= score_range[1])
+def get_sample_companies():
+    """サンプル企業データを生成（Google Sheets接続失敗時用）"""
+    return [
+        {
+            'ID': 1, '企業名': 'ABC建設', 'ステータス': 'Contacted', 
+            'PicoCELAスコア': 85, 'WiFi需要': '✅', '販売員': 'admin',
+            'メール': 'contact@abc-construction.com', '業界': '建設業',
+            'ウェブサイト': 'https://abc-construction.com',
+            '備考': 'Large construction company with multiple sites'
+        },
+        {
+            'ID': 2, '企業名': 'XYZ工業', 'ステータス': 'Qualified', 
+            'PicoCELAスコア': 92, 'WiFi需要': '✅', '販売員': 'admin',
+            'メール': 'info@xyz-industry.com', '業界': '製造業',
+            'ウェブサイト': 'https://xyz-industry.com',
+            '備考': 'Manufacturing facility with WiFi mesh network needs'
+        },
+        {
+            'ID': 3, '企業名': 'DEF開発', 'ステータス': 'Proposal', 
+            'PicoCELAスコア': 78, 'WiFi需要': '❌', '販売員': 'admin',
+            'メール': 'contact@def-dev.com', '業界': 'IT・ソフトウェア',
+            'ウェブサイト': 'https://def-dev.com',
+            '備考': 'Software development company'
+        }
     ]
-    
-    if wifi_filter == "WiFi必要":
-        df = df[df['WiFi需要'] == True]
-    elif wifi_filter == "WiFi不要":
-        df = df[df['WiFi需要'] == False]
-    
-    # 企業一覧表示
-    st.subheader(f"📋 企業一覧 ({len(df)}社)")
-    
-    if len(df) > 0:
-        # 表示用のデータフォーマット
-        display_df = df.copy()
-        display_df['WiFi需要'] = display_df['WiFi需要'].map({True: '✅', False: '❌'})
-        
-        st.dataframe(
-            display_df[['ID', '企業名', 'ステータス', 'PicoCELAスコア', '販売員', 'WiFi需要', 'メール', '最終更新']],
-            use_container_width=True
-        )
-    else:
-        st.info("🔍 検索条件に一致する企業が見つかりませんでした。")
 
-def show_analytics():
-    """分析画面表示"""
-    st.header("📈 分析")
-    
-    # サンプルデータの取得
-    companies = get_sample_companies()
-    df = pd.DataFrame(companies)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📊 ステータス分布")
-        
-        # ステータス分布グラフ
-        status_counts = df['ステータス'].value_counts()
-        fig_status = px.bar(
-            x=status_counts.index,
-            y=status_counts.values,
-            title="企業ステータス分布",
-            labels={'x': 'ステータス', 'y': '企業数'}
-        )
-        fig_status.update_layout(showlegend=False)
-        st.plotly_chart(fig_status, use_container_width=True)
-    
-    with col2:
-        st.subheader("🎯 PicoCELA関連度分析")
-        
-        # スコア分布ヒストグラム
-        fig_score = px.histogram(
-            df,
-            x='PicoCELAスコア',
-            nbins=10,
-            title="PicoCELA関連度スコア分布",
-            labels={'PicoCELAスコア': 'スコア', 'count': '企業数'}
-        )
-        st.plotly_chart(fig_score, use_container_width=True)
-    
-    # WiFi需要分析
-    st.subheader("📶 WiFi需要分析")
-    
-    wifi_counts = df['WiFi需要'].value_counts()
-    wifi_labels = ['WiFi必要', 'WiFi不要']
-    
-    fig_wifi = px.pie(
-        values=wifi_counts.values,
-        names=wifi_labels,
-        title="WiFi需要分布"
-    )
-    st.plotly_chart(fig_wifi, use_container_width=True)
+# ========================================
+# メイン画面表示関数
+# ========================================
 
-def show_add_company():
-    """企業追加画面表示"""
-    st.header("➕ 企業追加")
+def show_crm_new_page():
+    """CRM管理システム - フル機能版"""
     
-    with st.form("add_company_form"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            company_name = st.text_input("企業名 *", key="add_company_name")
-            email = st.text_input("メールアドレス", key="add_company_email")
-            industry = st.selectbox("業界", INDUSTRIES, key="add_company_industry")
-            phone = st.text_input("電話番号", key="add_company_phone")
-        
-        with col2:
-            website = st.text_input("ウェブサイト", key="add_company_website")
-            status = st.selectbox("初期ステータス", SALES_STATUS, key="add_company_status")
-            source = st.selectbox("情報源", ["Manual", "Import", "Web", "Reference"], key="add_company_source")
-            notes = st.text_area("備考", key="add_company_notes")
-        
-        submitted = st.form_submit_button("🚀 企業を追加", type="primary")
-        
-        if submitted:
-            if company_name:
-                # 新しい企業データの作成
-                new_company = {
-                    '企業名': company_name,
-                    'メール': email,
-                    '業界': industry,
-                    '電話番号': phone,
-                    'ウェブサイト': website,
-                    'ステータス': status,
-                    '備考': notes,
-                    '情報源': source
-                }
-                
-                # PicoCELAスコアとWiFi需要の自動計算
-                picocela_score = calculate_picocela_score(new_company)
-                wifi_need = determine_wifi_need(new_company)
-                
-                # 結果表示
-                st.success("✅ 企業追加しました！")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("PicoCELA関連度スコア", f"{picocela_score}点")
-                with col2:
-                    st.metric("WiFi需要判定", "✅ 必要" if wifi_need else "❌ 不要")
-                with col3:
-                    st.metric("追加日時", datetime.now().strftime("%Y-%m-%d"))
-                
-                # TODO: 実際のデータベースへの保存処理
-                st.info("💾 Google Sheets連携が有効な場合、自動的に同期されます。")
-            else:
-                st.error("❌ 企業名は必須です。")
-
-def show_settings():
-    """設定画面表示"""
-    st.header("⚙️ 設定")
+    st.title("🏢 CRM管理システム - フル機能版")
+    st.caption("企業データ管理・ステータス追跡・PicoCELA関連度分析")
     
-    # API接続状況（安全なチェック）
+    # Google Sheets接続テスト
+    st.info("🔗 統合プラットフォーム・ガイドページから各ページに移動できます｜Google Sheetsで更にリアルタイム同期")
+    
+    # API接続チェック（安全なチェック）
     try:
         api_connected, api_info = get_api_connection_info()
     except:
         api_connected, api_info = False, "設定エラー"
     
-    st.subheader("🔌 Google Sheets連携")
-    
-    if api_connected:
-        st.success("✅ Google Sheets連携中")
-        if api_info:
-            st.info(f"📊 接続先: {api_info}")
-            if st.button("📊 スプレッドシートを開く", key="open_spreadsheet"):
-                st.write(f"🔗 [Google Sheets]({api_info})")
-    else:
-        st.error("🔌 Google Sheets APIに接続できません")
-        st.info("統合ダッシュボードの設定を確認してください。")
-    
-    # システム統計
-    st.subheader("📊 システム統計")
-    
-    companies = get_sample_companies()
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("登録企業数", len(companies))
-    
-    with col2:
-        high_score_companies = len([c for c in companies if c['PicoCELAスコア'] > 80])
-        st.metric("高スコア企業", high_score_companies)
-    
-    with col3:
-        last_update = datetime.now().strftime("%Y-%m-%d %H:%M")
-        st.metric("最終更新", last_update)
-    
-    # データエクスポート
-    st.subheader("📤 データエクスポート")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("📥 CSVエクスポート", key="export_csv"):
-            df = pd.DataFrame(companies)
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="📥 CSVダウンロード",
-                data=csv,
-                file_name=f"companies_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
-    
-    with col2:
-        if st.button("📊 レポート生成", key="generate_report"):
-            st.info("📋 レポート機能は開発中です。")
-
-# ========================================
-# メイン実行部分
-# ========================================
-def main():
-    # デバッグメッセージ（一時的）
-    st.error("🚨 重要: この赤いメッセージが表示されていれば、アップデートが反映されています。")
-    st.success("✅ このメッセージが見える場合、アップデートは成功しています")
-    
-    # 戻るボタン
-    if st.button("← 統合ダッシュボードに戻る", key="back_to_dashboard_crm_new"):
-        st.session_state.current_view = 'dashboard'
-        st.rerun()
-    
-    st.title("🏢 CRM管理システム - フル機能版")
-    st.caption("企業データ管理・ステータス追跡・PicoCELA関連度分析")
-    
-    # Google Sheets API診断
-    st.info("🔍 統合プラットフォーム・サイドバーから各ページに移動できます | Google Sheetsで更にリアルタイム同期")
-    
-    # API接続チェック（安全な呼び出し）
-    try:
-        api_connected, api_info = get_api_connection_info()
-    except:
-        api_connected, api_info = False, "接続エラー"
-    
     if not api_connected:
-        st.warning("⚠️ Google Sheets APIに接続できません")
+        st.warning("⚠️ Google Sheets APIに接続できません。")
         
         # オフラインモード継続ボタン
-        if st.button("⚠️ オフラインモードで続行", key="continue_offline_mode"):
-            st.session_state.offline_mode = True
-            st.success("✅ オフラインモードが有効になりました")
+        if st.button("⚠️ オフラインモードで続行", key="offline_mode_btn"):
+            st.session_state.crm_offline_mode = True
     
-    # オフラインモード表示
-    if getattr(st.session_state, 'offline_mode', False) or not api_connected:
-        st.success("🚀 CRM機能（オフラインモード）")
+    # オフラインモードまたはAPI接続成功時に5つのタブを表示
+    if st.session_state.get('crm_offline_mode', False) or api_connected:
         
-        # 5つのタブ構造
+        # CRM機能表示
+        st.success("✅ CRM機能（オフラインモード）")
+        
+        # 5つのタブを作成
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "📊 ダッシュボード", 
             "🏢 企業管理", 
@@ -471,33 +141,17 @@ def main():
             # ダッシュボード機能を直接実装
             st.header("📊 CRMダッシュボード")
             
-            # 実際のGoogle Sheetsデータを取得
+            # 実際のGoogle Sheetsデータを取得を試行
             real_companies = get_real_companies_data()
             
             if real_companies is not None:
-                # リアルデータを使用
+                # Google Sheetsからの実際のデータを使用
                 companies = real_companies
-                st.success(f"✅ Google Sheets連携中 - {len(companies)}社のデータを取得")
+                st.info(f"🔗 Google Sheets連携中 - {len(companies)}社のデータを表示")
             else:
-                # フォールバックとしてサンプルデータを使用
-                companies = [
-                    {
-                        'company_id': 'ENR_1752934110', 'company_name': 'FUSIONDRIVER', 
-                        'sales_status': 'Contacted', 'picoCELA_relevance': 85, 
-                        'wifi_needs': 'Low', 'email': 'koji@fusiondriver.com'
-                    },
-                    {
-                        'company_id': 'ENR_1752953392', 'company_name': 'Wyebot',
-                        'sales_status': 'Qualified', 'picoCELA_relevance': 92,
-                        'wifi_needs': 'High', 'email': 'info@wyebot.com'
-                    },
-                    {
-                        'company_id': 'ENR_1752953393', 'company_name': 'Delta Electronics',
-                        'sales_status': 'Proposal', 'picoCELA_relevance': 78,
-                        'wifi_needs': 'Low', 'email': 'info@delta-americas.com'
-                    }
-                ]
-                st.warning("⚠️ オフラインモード - サンプルデータを表示中")
+                # フォールバック：サンプルデータを使用
+                companies = get_sample_companies()
+                st.info("📋 オフラインモード - サンプルデータを表示中")
             
             df = pd.DataFrame(companies)
             
@@ -505,180 +159,153 @@ def main():
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("📈 総企業数", len(df))
+                total_companies = len(companies)
+                st.metric("📈 総企業数", total_companies)
             
             with col2:
-                if 'wifi_needs' in df.columns:
-                    wifi_needed = len(df[df['wifi_needs'].isin(['High', 'Medium'])])
-                else:
-                    wifi_needed = len(df) // 2  # フォールバック
-                st.metric("📶 WiFi需要企業", wifi_needed, f"{wifi_needed/len(df)*100:.1f}%")
+                wifi_needed = len([c for c in companies if c.get('WiFi需要') == '✅'])
+                wifi_percentage = (wifi_needed / total_companies * 100) if total_companies > 0 else 0
+                st.metric("📶 WiFi需要企業", f"{wifi_needed} ({wifi_percentage:.1f}%)")
             
             with col3:
-                if 'picoCELA_relevance' in df.columns:
-                    picocela_related = len(df[df['picoCELA_relevance'] > 70])
-                else:
-                    picocela_related = len(df)
-                st.metric("🎯 PicoCELA関連", picocela_related, f"{picocela_related/len(df)*100:.1f}%")
+                picocela_related = len([c for c in companies if c.get('PicoCELAスコア', 0) > 50])
+                picocela_percentage = (picocela_related / total_companies * 100) if total_companies > 0 else 0
+                st.metric("🎯 PicoCELA関連", f"{picocela_related} ({picocela_percentage:.1f}%)")
             
             with col4:
-                st.metric("🎯 今月目標", 15)
+                monthly_target = 15
+                st.metric("🎯 今月目標", monthly_target)
             
-            # 最新企業データ
-            st.subheader("📋 最新企業データ（上位10社）")
+            # 企業データ一覧表示
+            st.subheader("📋 企業データ一覧")
             
-            # データ表示のフォーマット調整
-            display_df = df.head(10).copy()
-            
-            # WiFi需要の表示調整
-            if 'wifi_needs' in display_df.columns:
-                display_df['WiFi需要'] = display_df['wifi_needs'].map({
-                    'High': '✅ 高', 'Medium': '⚠️ 中', 'Low': '❌ 低', 'Critical': '🔥 重要'
-                })
+            # データフレーム表示用に整形
+            display_df = pd.DataFrame(companies)
+            if not display_df.empty:
+                st.dataframe(display_df, use_container_width=True)
             else:
-                display_df['WiFi需要'] = '❌'
-            
-            # 企業名とステータスを表示
-            display_columns = []
-            if 'company_name' in display_df.columns:
-                display_columns.append('company_name')
-            if 'sales_status' in display_df.columns:
-                display_columns.append('sales_status')
-            if 'picoCELA_relevance' in display_df.columns:
-                display_columns.append('picoCELA_relevance')
-            display_columns.append('WiFi需要')
-            
-            st.dataframe(
-                display_df[display_columns] if display_columns else display_df,
-                use_container_width=True
-            )
+                st.info("データがありません")
         
         with tab2:
             # 企業管理機能を直接実装
             st.header("🏢 企業管理")
             
             # ステータスリストを直接定義
-            status_options = ["全て", "New", "Contacted", "Replied", "Engaged", "Qualified", "Proposal", "Negotiation", "Won", "Lost", "On Hold"]
+            status_options = ["全て", "New", "Contacted", "Replied", "Engaged", "Qualified", "Proposal", "Negotiation", "Won", "Lost"]
             
             # 検索・フィルター機能
-            col1, col2 = st.columns([2, 1])
+            col1, col2 = st.columns(2)
             
             with col1:
-                search_term = st.text_input("🔍 企業名検索", key="company_search_input_tab2")
+                search_company = st.text_input("🔍 企業名検索", key="search_company_tab2")
             
             with col2:
-                status_filter = st.selectbox(
-                    "ステータスフィルター", 
-                    status_options,
-                    key="status_filter_select_tab2"
-                )
+                filter_status = st.selectbox("📊 ステータスフィルター", status_options, key="filter_status_tab2")
             
-            # サンプルデータの直接定義
-            companies = [
-                {
-                    'ID': 1, '企業名': 'ABC建設', 'ステータス': 'Contacted', 
-                    'PicoCELAスコア': 85, '販売員': 'admin', 'WiFi需要': True,
-                    'メール': 'contact@abc-kensetsu.co.jp', '最終更新': '2025-07-28'
-                },
-                {
-                    'ID': 2, '企業名': 'XYZ工業', 'ステータス': 'Qualified', 
-                    'PicoCELAスコア': 92, '販売員': 'admin', 'WiFi需要': True,
-                    'メール': 'info@xyz-kogyo.co.jp', '最終更新': '2025-07-27'
-                },
-                {
-                    'ID': 3, '企業名': 'DEF開発', 'ステータス': 'Proposal', 
-                    'PicoCELAスコア': 78, '販売員': 'admin', 'WiFi需要': False,
-                    'メール': 'sales@def-dev.co.jp', '最終更新': '2025-07-26'
-                }
-            ]
+            # データの取得とフィルタリング
+            real_companies = get_real_companies_data()
+            if real_companies is not None:
+                companies = real_companies
+            else:
+                companies = get_sample_companies()
             
-            df = pd.DataFrame(companies)
+            # フィルタリング処理
+            filtered_companies = companies.copy()
             
-            # フィルタリング適用
-            if search_term:
-                df = df[df['企業名'].str.contains(search_term, case=False, na=False)]
+            if search_company:
+                filtered_companies = [c for c in filtered_companies if search_company.lower() in c.get('企業名', '').lower()]
             
-            if status_filter != "全て":
-                df = df[df['ステータス'] == status_filter]
+            if filter_status != "全て":
+                filtered_companies = [c for c in filtered_companies if c.get('ステータス') == filter_status]
             
             # 企業一覧表示
-            st.subheader(f"📋 企業一覧 ({len(df)}社)")
+            st.subheader(f"📋 企業一覧 ({len(filtered_companies)}社)")
             
-            if len(df) > 0:
-                # 表示用のデータフォーマット
-                display_df = df.copy()
-                display_df['WiFi需要'] = display_df['WiFi需要'].map({True: '✅', False: '❌'})
-                
-                st.dataframe(
-                    display_df[['ID', '企業名', 'ステータス', 'PicoCELAスコア', '販売員', 'WiFi需要', 'メール']],
-                    use_container_width=True
-                )
-            else:
-                st.info("🔍 検索条件に一致する企業が見つかりませんでした。")
+            for company in filtered_companies:
+                with st.expander(f"🏢 {company.get('企業名', 'N/A')} - {company.get('ステータス', 'N/A')}"):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.write(f"**ID**: {company.get('ID', 'N/A')}")
+                        st.write(f"**ステータス**: {company.get('ステータス', 'N/A')}")
+                        st.write(f"**PicoCELAスコア**: {company.get('PicoCELAスコア', 'N/A')}")
+                    
+                    with col2:
+                        st.write(f"**販売員**: {company.get('販売員', 'N/A')}")
+                        st.write(f"**WiFi需要**: {company.get('WiFi需要', 'N/A')}")
+                        st.write(f"**業界**: {company.get('業界', 'N/A')}")
+                    
+                    with col3:
+                        st.write(f"**メール**: {company.get('メール', 'N/A')}")
+                        st.write(f"**ウェブサイト**: {company.get('ウェブサイト', 'N/A')}")
+                        st.write(f"**備考**: {company.get('備考', 'N/A')}")
         
         with tab3:
             # 分析機能を直接実装
             st.header("📈 分析")
             
-            # サンプルデータの直接定義
-            companies = [
-                {'ステータス': 'Contacted', 'PicoCELAスコア': 85},
-                {'ステータス': 'Qualified', 'PicoCELAスコア': 92},
-                {'ステータス': 'Proposal', 'PicoCELAスコア': 78}
-            ]
+            # データの取得
+            real_companies = get_real_companies_data()
+            if real_companies is not None:
+                companies = real_companies
+            else:
+                companies = get_sample_companies()
             
-            df = pd.DataFrame(companies)
+            # ステータス分布分析
+            st.subheader("📊 ステータス分布")
             
-            col1, col2 = st.columns(2)
+            status_counts = {}
+            for company in companies:
+                status = company.get('ステータス', 'Unknown')
+                status_counts[status] = status_counts.get(status, 0) + 1
             
-            with col1:
-                st.subheader("📊 ステータス分布")
-                
-                # ステータス分布グラフ（シンプル版）
-                status_counts = df['ステータス'].value_counts()
-                
+            if status_counts:
                 # Streamlit標準のbar_chartを使用
                 st.bar_chart(status_counts)
+            
+            # PicoCELA関連度分析
+            st.subheader("🎯 PicoCELA関連度分析")
+            
+            scores = [company.get('PicoCELAスコア', 0) for company in companies if company.get('PicoCELAスコア') is not None]
+            
+            if scores:
+                # スコア分布をヒストグラム的に表示
+                score_ranges = {'0-25': 0, '26-50': 0, '51-75': 0, '76-100': 0}
+                for score in scores:
+                    if score <= 25:
+                        score_ranges['0-25'] += 1
+                    elif score <= 50:
+                        score_ranges['26-50'] += 1
+                    elif score <= 75:
+                        score_ranges['51-75'] += 1
+                    else:
+                        score_ranges['76-100'] += 1
                 
-                # データ表示
-                st.write("**ステータス別企業数:**")
-                for status, count in status_counts.items():
-                    st.write(f"- {status}: {count}社")
-            
-            with col2:
-                st.subheader("🎯 PicoCELA関連度分析")
+                st.bar_chart(score_ranges)
                 
-                # スコア分布の表示（シンプル版）
-                scores = df['PicoCELAスコア'].tolist()
-                score_df = pd.DataFrame({'スコア': scores})
+                # 統計情報
+                avg_score = sum(scores) / len(scores)
+                max_score = max(scores)
+                min_score = min(scores)
                 
-                # Streamlit標準のhistogramを使用
-                st.bar_chart(score_df.T)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("平均スコア", f"{avg_score:.1f}点")
+                with col2:
+                    st.metric("最高スコア", f"{max_score}点")
+                with col3:
+                    st.metric("最低スコア", f"{min_score}点")
                 
-                # 統計情報表示
-                st.write("**スコア統計:**")
-                st.write(f"- 平均スコア: {df['PicoCELAスコア'].mean():.1f}点")
-                st.write(f"- 最高スコア: {df['PicoCELAスコア'].max()}点")
-                st.write(f"- 最低スコア: {df['PicoCELAスコア'].min()}点")
-            
-            # 追加分析
-            st.subheader("📈 詳細分析")
-            
-            col3, col4 = st.columns(2)
-            
-            with col3:
-                st.metric(
-                    "高スコア企業（80点以上）",
-                    len(df[df['PicoCELAスコア'] >= 80]),
-                    f"{len(df[df['PicoCELAスコア'] >= 80])/len(df)*100:.1f}%"
-                )
-            
-            with col4:
-                st.metric(
-                    "成約見込み企業",
-                    len(df[df['ステータス'].isin(['Qualified', 'Proposal'])]),
-                    "積極フォロー推奨"
-                )
+                # 詳細分析
+                st.subheader("📈 詳細分析")
+                high_score_companies = len([s for s in scores if s >= 80])
+                promising_companies = len([s for s in scores if s >= 70])
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("高スコア企業（80点以上）", f"{high_score_companies}社 ({high_score_companies/len(scores)*100:.1f}%)")
+                with col2:
+                    st.metric("成約見込み企業", f"{promising_companies}社（積極フォロー推奨）")
         
         with tab4:
             # 企業追加機能を直接実装
@@ -686,114 +313,118 @@ def main():
             
             # 業界リストとステータスリストを直接定義
             industry_options = ["建設業", "製造業", "IT・ソフトウェア", "金融業", "小売業", "不動産業", "物流業", "医療・介護", "教育", "その他"]
-            status_options = ["New", "Contacted", "Replied", "Engaged", "Qualified", "Proposal", "Negotiation", "Won", "Lost", "On Hold"]
+            status_options_add = ["New", "Contacted", "Replied", "Engaged", "Qualified", "Proposal", "Negotiation", "Won", "Lost"]
             
-            with st.form("add_company_form_tab4"):
+            # 企業追加フォーム
+            with st.form("add_company_form"):
+                st.subheader("🏢 新規企業情報")
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    company_name = st.text_input("企業名 *", key="add_company_name_tab4")
-                    email = st.text_input("メールアドレス", key="add_company_email_tab4")
-                    industry = st.selectbox("業界", industry_options, key="add_company_industry_tab4")
+                    company_name = st.text_input("企業名 *", key="add_company_name")
+                    email = st.text_input("メールアドレス", key="add_email")
+                    industry = st.selectbox("業界", industry_options, key="add_industry")
                 
                 with col2:
-                    website = st.text_input("ウェブサイト", key="add_company_website_tab4")
-                    status = st.selectbox("初期ステータス", status_options, key="add_company_status_tab4")
-                    notes = st.text_area("備考", key="add_company_notes_tab4")
+                    website = st.text_input("ウェブサイト", key="add_website")
+                    initial_status = st.selectbox("初期ステータス", status_options_add, key="add_initial_status")
+                    
+                notes = st.text_area("備考", key="add_notes", height=100)
                 
-                submitted = st.form_submit_button("🚀 企業を追加", type="primary")
+                submit_button = st.form_submit_button("🚀 企業を追加")
                 
-                if submitted:
-                    if company_name:
-                        # 新しい企業データの作成
-                        new_company = {
-                            '企業名': company_name,
-                            'メール': email,
-                            '業界': industry,
-                            'ウェブサイト': website,
-                            'ステータス': status,
-                            '備考': notes
-                        }
-                        
-                        # PicoCELAスコアの簡単計算
-                        combined_text = f"{company_name} {industry} {notes} {website}".lower()
-                        score = 0
-                        if 'wifi' in combined_text or 'wireless' in combined_text:
-                            score += 30
-                        if 'network' in combined_text or 'mesh' in combined_text:
-                            score += 20
-                        if industry in ["建設業", "製造業"]:
+                if submit_button and company_name:
+                    # PicoCELAスコアの簡易計算
+                    score = 0
+                    notes_lower = notes.lower()
+                    
+                    # キーワードベースのスコア計算
+                    keywords = ['wifi', 'wireless', 'network', 'mesh', 'connectivity', 'internet']
+                    for keyword in keywords:
+                        if keyword in notes_lower:
                             score += 15
-                        
-                        wifi_need = score > 25 or industry in ["建設業", "製造業", "物流業"]
-                        
-                        # 結果表示
-                        st.success("✅ 企業追加しました！")
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("PicoCELA関連度スコア", f"{score}点")
-                        with col2:
-                            st.metric("WiFi需要判定", "✅ 必要" if wifi_need else "❌ 不要")
-                        with col3:
-                            st.metric("追加日時", datetime.now().strftime("%Y-%m-%d"))
-                        
-                        st.info("💾 オフラインモードです。Google Sheets連携時に同期されます。")
-                    else:
-                        st.error("❌ 企業名は必須です。")
+                    
+                    # 業界ベースのスコア調整
+                    if industry == "建設業":
+                        score += 20
+                    elif industry == "製造業":
+                        score += 15
+                    elif industry == "IT・ソフトウェア":
+                        score += 5
+                    
+                    # WiFi需要判定
+                    wifi_need = "✅" if (score > 30 or industry in ["建設業", "製造業"]) else "❌"
+                    
+                    # 結果表示
+                    st.success("✅ 企業追加しました！")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("PicoCELA関連度スコア", f"{score}点")
+                    with col2:
+                        st.metric("WiFi需要判定", wifi_need)
+                    with col3:
+                        st.metric("追加日時", datetime.now().strftime("%Y-%m-%d"))
+                    
+                    # 企業情報の表示
+                    st.info(f"企業名: {company_name} | 業界: {industry} | ステータス: {initial_status}")
         
         with tab5:
             # 設定機能を直接実装
             st.header("⚙️ 設定")
             
             # API接続状況
-            st.subheader("🔌 Google Sheets連携")
-            st.error("🔌 Google Sheets APIに接続できません")
-            st.info("統合ダッシュボードの設定を確認してください。")
+            st.subheader("🔗 API接続状況")
+            
+            try:
+                api_connected, api_info = get_api_connection_info()
+                if api_connected:
+                    st.success(f"✅ {api_info}")
+                else:
+                    st.error(f"❌ {api_info}")
+            except:
+                st.error("❌ API接続テストでエラーが発生しました")
             
             # システム統計
             st.subheader("📊 システム統計")
             
+            real_companies = get_real_companies_data()
+            if real_companies is not None:
+                companies = real_companies
+                data_source = "Google Sheets"
+            else:
+                companies = get_sample_companies()
+                data_source = "サンプルデータ"
+            
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.metric("登録企業数", 3)
-            
+                st.metric("データソース", data_source)
             with col2:
-                st.metric("高スコア企業", 2)
-            
+                st.metric("総企業数", len(companies))
             with col3:
-                last_update = datetime.now().strftime("%Y-%m-%d %H:%M")
-                st.metric("最終更新", last_update)
+                st.metric("最終更新", datetime.now().strftime("%Y-%m-%d %H:%M"))
             
             # データエクスポート
             st.subheader("📤 データエクスポート")
             
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("📥 CSVエクスポート", key="export_csv_tab5"):
-                    # サンプルデータでCSV作成
-                    sample_data = [
-                        {'企業名': 'ABC建設', 'ステータス': 'Contacted', 'スコア': 85},
-                        {'企業名': 'XYZ工業', 'ステータス': 'Qualified', 'スコア': 92},
-                        {'企業名': 'DEF開発', 'ステータス': 'Proposal', 'スコア': 78}
-                    ]
-                    df = pd.DataFrame(sample_data)
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 CSVダウンロード",
-                        data=csv,
-                        file_name=f"companies_{datetime.now().strftime('%Y%m%d')}.csv",
-                        mime="text/csv",
-                        key="download_csv_tab5"
-                    )
-            
-            with col2:
-                if st.button("📊 レポート生成", key="generate_report_tab5"):
-                    st.info("📋 レポート機能は開発中です。")
+            if st.button("📊 CSVエクスポート", key="export_csv_btn"):
+                df = pd.DataFrame(companies)
+                csv = df.to_csv(index=False, encoding='utf-8')
+                
+                st.download_button(
+                    label="💾 CSVファイルをダウンロード",
+                    data=csv,
+                    file_name=f'companies_{datetime.now().strftime("%Y%m%d")}.csv',
+                    mime='text/csv'
+                )
     else:
-        st.info("🔌 Google Sheets API接続を確立中...")
+        st.info("システムを再起動してください")
+
+# ========================================
+# メイン実行
+# ========================================
 
 if __name__ == "__main__":
-    main()
+    show_crm_new_page()
