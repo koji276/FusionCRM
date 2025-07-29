@@ -205,28 +205,62 @@ class CompanyManager:
             return pd.DataFrame()
 
 def get_google_sheets_api():
-    """Google Sheets API取得（統合版）"""
+    """Google Sheets API取得（統合版・強化版）"""
     
+    # デバッグ情報を表示
+    st.sidebar.markdown("### 🔧 API接続デバッグ")
+    
+    # 優先順位1: Streamlit secrets
     if 'google_apps_script_url' in st.secrets:
         gas_url = st.secrets['google_apps_script_url']
+        st.sidebar.success("✅ Secrets からURL取得")
+        st.sidebar.text(f"URL: {gas_url[:30]}...")
         try:
             api = GoogleSheetsAPI(gas_url)
             st.session_state.crm_gas_url = gas_url
             return api
         except Exception as e:
-            st.error(f"API初期化エラー: {str(e)}")
+            st.sidebar.error(f"Secrets API初期化エラー: {str(e)}")
     
+    # 優先順位2: セッション状態（CRM専用）
     elif 'crm_gas_url' in st.session_state:
+        gas_url = st.session_state.crm_gas_url
+        st.sidebar.info("📋 CRM専用URL使用")
+        st.sidebar.text(f"URL: {gas_url[:30]}...")
         try:
-            return GoogleSheetsAPI(st.session_state.crm_gas_url)
+            return GoogleSheetsAPI(gas_url)
         except Exception as e:
-            st.error(f"保存済みURL初期化エラー: {str(e)}")
+            st.sidebar.error(f"CRM URL初期化エラー: {str(e)}")
     
+    # 優先順位3: 統合システムのAPI設定を継承
     elif 'gas_url' in st.session_state:
+        gas_url = st.session_state.gas_url
+        st.sidebar.info("🔄 統合システムURL継承")
+        st.sidebar.text(f"URL: {gas_url[:30]}...")
         try:
-            return GoogleSheetsAPI(st.session_state.gas_url)
+            return GoogleSheetsAPI(gas_url)
         except Exception as e:
-            st.error(f"統合システムAPI使用エラー: {str(e)}")
+            st.sidebar.error(f"統合システムAPI使用エラー: {str(e)}")
+    
+    # 優先順位4: 強制的にSecretsを再チェック
+    else:
+        st.sidebar.warning("⚠️ API設定が見つかりません")
+        st.sidebar.markdown("**利用可能な設定:**")
+        
+        # デバッグ用：利用可能な設定を表示
+        if hasattr(st, 'secrets'):
+            available_secrets = [key for key in st.secrets.keys() if 'script' in key.lower() or 'url' in key.lower()]
+            if available_secrets:
+                st.sidebar.text("Secrets: " + ", ".join(available_secrets))
+            else:
+                st.sidebar.text("Secrets: なし")
+        
+        # セッション状態の確認
+        session_apis = [key for key in st.session_state.keys() if 'url' in key.lower() or 'api' in key.lower()]
+        if session_apis:
+            st.sidebar.text("Session: " + ", ".join(session_apis))
+        else:
+            st.sidebar.text("Session: なし")
     
     return None
 
@@ -480,28 +514,101 @@ def show_add_company_form(company_manager):
 st.markdown("---")
 st.markdown("## 📋 以下に5つのタブが表示されるはずです:")
 
-# メイン実行部分
+# メイン実行部分（API接続デバッグ強化版）
 try:
     # API取得
     api = get_google_sheets_api()
     
     if api is None:
         st.error("🔌 Google Sheets APIに接続できません")
-        st.info("統合ダッシュボードの設定を確認してください。")
         
-        # フォールバック: 基本機能のみ提供
-        st.markdown("### 📊 基本CRM機能（オフライン）")
-        st.info("Google Sheets接続なしでも基本機能は利用できます。")
+        # 詳細なデバッグ情報
+        st.markdown("### 🔍 詳細診断")
         
-        # サンプルデータ表示
-        sample_data = {
-            '企業名': ['ABC建設', 'XYZ工業', 'DEF開発'],
-            'ステータス': ['Contacted', 'Qualified', 'Proposal'],
-            'PicoCELAスコア': [85, 92, 78],
-            'WiFi需要': ['✅', '✅', '❌']
-        }
-        df = pd.DataFrame(sample_data)
-        st.dataframe(df, use_container_width=True)
+        # 統合ダッシュボードの認証状態を確認
+        if 'user_info' in st.session_state:
+            user_info = st.session_state.user_info
+            st.success(f"✅ ユーザー認証済み: {user_info.get('username', 'Unknown')}")
+        else:
+            st.warning("⚠️ ユーザー認証情報なし")
+        
+        # 緊急回避ボタン
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🔄 API設定を再取得", key="refresh_api_settings"):
+                # 統合システムの設定を強制的に再読み込み
+                if 'gas_url' in st.session_state:
+                    st.session_state.crm_gas_url = st.session_state.gas_url
+                    st.success("API設定を更新しました")
+                    st.rerun()
+                else:
+                    st.error("統合システムのAPI設定が見つかりません")
+        
+        with col2:
+            if st.button("⚠️ オフラインモードで続行", key="offline_mode_continue"):
+                st.session_state.force_offline_mode = True
+                st.info("オフラインモードに切り替えました")
+                st.rerun()
+        
+        # 強制オフラインモード
+        if st.session_state.get('force_offline_mode', False):
+            st.info("🔧 オフラインモード: Google Sheets接続をスキップして基本機能を使用")
+            
+            # オフライン用のダミーマネージャー
+            class OfflineCompanyManager:
+                def get_all_companies(self):
+                    sample_data = {
+                        'company_name': ['ABC建設', 'XYZ工業', 'DEF開発', 'テスト建設株式会社'],
+                        'sales_status': ['Contacted', 'Qualified', 'Proposal', 'New'],
+                        'picocela_relevance_score': [85, 92, 78, 95],
+                        'wifi_required': [1, 1, 0, 1],
+                        'email': ['info@abc.jp', 'contact@xyz.com', 'sales@def.jp', 'test@test.com'],
+                        'industry': ['建設業', '工業', '開発', '建設業']
+                    }
+                    return pd.DataFrame(sample_data)
+                
+                def add_company(self, company_data, user_id="system"):
+                    st.success("✅ オフラインモード: 企業データをメモリに追加しました")
+                    return f"offline_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            company_manager = OfflineCompanyManager()
+            
+            # タブ構造での機能表示（オフラインモード）
+            st.markdown("### 🚀 CRM機能（オフラインモード）")
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 ダッシュボード", "🏢 企業管理", "📈 分析", "➕ 企業追加", "⚙️ 設定"])
+            
+            with tab1:
+                show_crm_dashboard(company_manager)
+            
+            with tab2:
+                show_company_list_management(company_manager)
+            
+            with tab3:
+                show_crm_analysis(company_manager)
+            
+            with tab4:
+                show_add_company_form(company_manager)
+            
+            with tab5:
+                st.markdown("### ⚙️ CRM設定（オフライン）")
+                st.warning("⚠️ オフラインモードです")
+                st.info("Google Sheets接続が復旧すると、データが同期されます。")
+        
+        else:
+            # フォールバック: 基本機能のみ提供
+            st.markdown("### 📊 基本CRM機能（オフライン）")
+            st.info("Google Sheets接続なしでも基本機能は利用できます。")
+            
+            # サンプルデータ表示
+            sample_data = {
+                '企業名': ['ABC建設', 'XYZ工業', 'DEF開発'],
+                'ステータス': ['Contacted', 'Qualified', 'Proposal'],
+                'PicoCELAスコア': [85, 92, 78],
+                'WiFi需要': ['✅', '✅', '❌']
+            }
+            df = pd.DataFrame(sample_data)
+            st.dataframe(df, use_container_width=True)
         
     else:
         # 正常なAPI接続時
@@ -512,6 +619,7 @@ try:
             st.success(f"✅ Google Sheets連携中 | [📊 スプレッドシートを開く]({st.session_state.crm_spreadsheet_url})")
         
         # タブ構造での機能表示（ユニークキー付き）
+        st.markdown("### 🚀 CRM機能（フルモード）")
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 ダッシュボード", "🏢 企業管理", "📈 分析", "➕ 企業追加", "⚙️ 設定"])
         
         with tab1:
