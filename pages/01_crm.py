@@ -579,6 +579,37 @@ try:
                 st.markdown("**📊 データ統計**")
                 all_companies = company_manager.get_all_companies()
                 st.metric("登録企業数", len(all_companies))
+        
+        with tab1:
+            show_crm_dashboard(company_manager)
+        
+        with tab2:
+            show_company_list_management(company_manager)
+        
+        with tab3:
+            show_crm_analysis(company_manager)
+        
+        with tab4:
+            show_add_company_form(company_manager)
+        
+        with tab5:
+            st.markdown("### ⚙️ CRM設定")
+            st.info("統合システムの設定は統合ダッシュボードで管理されます。")
+            
+            # 設定状況表示
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🔧 接続状況**")
+                if 'crm_spreadsheet_url' in st.session_state:
+                    st.success("✅ Google Sheets接続中")
+                else:
+                    st.warning("⚠️ Google Sheets未接続")
+            
+            with col2:
+                st.markdown("**📊 データ統計**")
+                all_companies = company_manager.get_all_companies()
+                st.metric("登録企業数", len(all_companies))
 
 except Exception as e:
     st.error(f"🚨 CRMシステムエラー: {str(e)}")
