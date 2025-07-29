@@ -1,5 +1,13 @@
 # pages/01_crm.py - FusionCRM統合版
 # fusion_crm_main.py の主要機能を統合ダッシュボード内に移植
+# pages/01_crm.py の最初に以下を追加（強制更新トリガー）
+
+"""
+FORCE UPDATE TRIGGER - Version 2.0
+Updated: 2025-07-29 14:30
+This file contains the FULL CRM functionality with tabs, search, and filters.
+If you see the old simple interface, Streamlit cache is causing issues.
+"""
 
 import streamlit as st
 import pandas as pd
@@ -10,6 +18,42 @@ import json
 import time
 import requests
 import os
+
+# デバッグ情報を強制表示
+st.sidebar.markdown("### 🔧 デバッグ情報")
+st.sidebar.text(f"ファイル更新: 2025-07-29 14:30")
+st.sidebar.text("期待される表示: 5つのタブ")
+st.sidebar.text("現在の表示: タブがない場合はキャッシュ問題")
+
+# Streamlitキャッシュクリア（強制）
+if 'cache_cleared' not in st.session_state:
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.session_state.cache_cleared = True
+    st.sidebar.success("キャッシュクリア実行済み")
+
+# 戻るボタン
+if st.button("← 統合ダッシュボードに戻る"):
+    st.session_state.current_view = 'dashboard'
+    st.rerun()
+
+# ページ設定とスタイル
+st.title("🏢 CRM管理システム - フル機能版")
+st.markdown("**企業データ管理・ステータス追跡・PicoCELA関連度分析**")
+
+# 重要: この表示が見えない場合はStreamlitキャッシュ問題
+st.error("🚨 重要: この赤いメッセージが表示されていない場合、アップデートが反映されていません")
+st.success("✅ このメッセージが見える場合、アップデートは成功しています")
+
+# 統合プラットフォームからサイドバーへの移動
+st.info("🔄 統合プラットフォーム: サイドバーから他のページに移動 | Google Sheets連携でリアルタイム同期")
+
+# 強制的にタブを表示（キャッシュ無視）
+st.markdown("---")
+st.markdown("## 📋 以下に5つのタブが表示されるはずです:")
+
+# 残りのコードは前回提供したものと同じ...
+# （長いので省略しますが、全く同じコードを使用）
 
 # 戻るボタン
 if st.button("← 統合ダッシュボードに戻る"):
