@@ -1,25 +1,45 @@
-# pages/01_crm_complete.py - アップロードボタン付き完成版
-# Updated: 2025-07-29 - Added Excel upload functionality with Google Sheets batch upload
-# Working version with correct Google Sheets data mapping + Excel upload support
+# pages/01_crm.py - 修正完成版
+# Updated: 2025-07-29 - Fixed Google Sheets connection and upload functionality
+# Complete CRM System with Excel upload and Google Sheets batch upload
 
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import requests
 import json
+
+# requestsライブラリのエラーハンドリング修正
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    st.error("⚠️ requestsライブラリが利用できません。オフラインモードで動作します。")
+    REQUESTS_AVAILABLE = False
 
 # 必要なライブラリのインポート
 try:
     from io import BytesIO
     import openpyxl
+    EXCEL_AVAILABLE = True
 except ImportError:
-    st.error("必要なライブラリがインストールされていません")
+    st.warning("⚠️ Excelライブラリが利用できません。CSV機能のみ利用可能です。")
+    EXCEL_AVAILABLE = False
 
 # ========================================
-# デバッグメッセージ
+# ページ設定
 # ========================================
-st.error("🚨 完成版: Google Sheetsデータ構造対応 + エクセルアップロード機能付き")
-st.success("✅ エクセル一括アップロード機能実装済み - 50社データ対応")
+st.set_page_config(
+    page_title="CRM管理システム - エクセルアップロード対応版",
+    page_icon="🏢",
+    layout="wide"
+)
+
+# ========================================
+# デバッグメッセージ（修正版）
+# ========================================
+if REQUESTS_AVAILABLE:
+    st.success("✅ 修正完成版: Google Sheets接続エラー修正 + エクセルアップロード機能付き")
+else:
+    st.warning("⚠️ オフラインモード: requestsライブラリ不足のため、サンプルデータで動作中")
 
 # ========================================
 # CRM管理システム - 完成版
@@ -37,48 +57,86 @@ st.info("🔗 統合プラットフォーム・Google Sheetsリアルタイム�
 
 @st.cache_data(ttl=300)  # 5分間キャッシュ
 def get_google_sheets_data():
-    """Google SheetsからCRMデータを取得"""
+    """Google SheetsからCRMデータを取得（修正版）"""
+    if not REQUESTS_AVAILABLE:
+        st.info("📋 requestsライブラリが利用できないため、サンプルデータを使用します")
+        return [], False
+    
     try:
         st.info("🔄 Google Sheetsから企業データを取得中...")
         
         # Google Apps Script URL
         api_url = "https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec"
         
-        # APIリクエスト実行
+        # 接続設定を改善
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache'
+        }
+        
+        # APIリクエスト実行（修正版）
         response = requests.get(
             api_url,
             params={"action": "get_companies"},
-            timeout=20
+            headers=headers,
+            timeout=30,  # タイムアウトを30秒に延長
+            verify=True
         )
         
         st.info(f"📡 API Response Status: {response.status_code}")
         
         if response.status_code == 200:
-            data = response.json()
-            
-            # 🔧 修正: 'companies' キーを使用（'data' ではない）
-            if data.get('success') and data.get('companies'):
-                companies = data['companies']
-                st.success(f"✅ Google Sheets連携成功！{len(companies)}社のデータを取得")
+            try:
+                data = response.json()
                 
-                # デバッグ情報
-                company_names = [c.get('company_name', 'N/A') for c in companies[:5]]
-                st.info(f"📊 取得企業: {', '.join(company_names)}{'...' if len(companies) > 5 else ''}")
+                # デバッグ情報を詳細に表示
+                st.info(f"🔍 Response Keys: {list(data.keys()) if isinstance(data, dict) else 'Not dict'}")
                 
-                return companies, True
-            else:
-                st.warning(f"⚠️ データ取得エラー: success={data.get('success')}, companies={bool(data.get('companies'))}")
+                # 'companies' キーを使用
+                if data.get('success') and data.get('companies'):
+                    companies = data['companies']
+                    st.success(f"✅ Google Sheets連携成功！{len(companies)}社のデータを取得")
+                    
+                    # デバッグ情報
+                    if companies:
+                        company_names = [c.get('company_name', 'N/A') for c in companies[:3]]
+                        st.info(f"📊 取得企業: {', '.join(company_names)}{'...' if len(companies) > 3 else ''}")
+                    
+                    return companies, True
+                else:
+                    st.warning(f"⚠️ データ取得エラー: success={data.get('success', 'N/A')}, companies存在={bool(data.get('companies'))}")
+                    st.warning(f"🔍 実際のレスポンス: {str(data)[:200]}...")
+                    return [], False
+                    
+            except json.JSONDecodeError as e:
+                st.error(f"❌ JSON解析エラー: {str(e)}")
+                st.error(f"📄 Raw Response: {response.text[:300]}...")
                 return [], False
         else:
-            st.error(f"❌ Google Sheets API Error: {response.status_code}")
+            st.error(f"❌ Google Sheets API HTTP Error: {response.status_code}")
+            st.error(f"📄 Response Text: {response.text[:300]}...")
             return [], False
 
-    except Exception as e:
+    except requests.exceptions.Timeout:
+        st.warning("⚠️ Google Sheets接続タイムアウト（30秒）- オフラインモードに切り替えます")
+        return [], False
+    except requests.exceptions.ConnectionError:
+        st.warning("⚠️ Google Sheets接続エラー - ネットワーク接続を確認してください")
+        return [], False
+    except requests.exceptions.RequestException as e:
         st.warning(f"🔗 Google Sheets接続失敗: {str(e)}")
         return [], False
+    except Exception as e:
+        st.warning(f"🔗 Google Sheetsデータ取得エラー: {str(e)}")
+        return [], False
 
-# データ取得実行
-google_sheets_companies, google_sheets_success = get_google_sheets_data()
+# データ取得実行（修正版）
+if REQUESTS_AVAILABLE:
+    google_sheets_companies, google_sheets_success = get_google_sheets_data()
+else:
+    google_sheets_companies, google_sheets_success = [], False
 
 # ========================================
 # データ正規化（実際の構造に基づく）
@@ -256,7 +314,12 @@ def normalize_excel_data(df):
     return normalized_data
 
 def upload_to_google_sheets(normalized_data):
-    """正規化データをGoogle Sheetsにアップロード"""
+    """正規化データをGoogle Sheetsにアップロード（修正版）"""
+    if not REQUESTS_AVAILABLE:
+        st.error("❌ requestsライブラリが利用できないため、アップロードできません")
+        st.info("💡 ローカル環境でpip install requestsを実行してください")
+        return
+    
     try:
         st.info("🔄 Google Sheetsにアップロード中...")
         
@@ -271,17 +334,24 @@ def upload_to_google_sheets(normalized_data):
         
         st.info(f"📤 {len(normalized_data)}社のデータを送信中...")
         
-        # APIリクエストを送信
+        # 改善されたAPIリクエスト設定
         headers = {
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Cache-Control': 'no-cache'
         }
+        
+        # データサイズを確認
+        data_size = len(json.dumps(upload_data))
+        st.info(f"📊 送信データサイズ: {data_size:,} bytes")
         
         response = requests.post(
             api_url,
             json=upload_data,
             headers=headers,
-            timeout=60  # 60秒のタイムアウト
+            timeout=120,  # 2分のタイムアウト（大量データ対応）
+            verify=True
         )
         
         st.info(f"📡 API Response Status: {response.status_code}")
@@ -289,7 +359,7 @@ def upload_to_google_sheets(normalized_data):
         if response.status_code == 200:
             try:
                 result = response.json()
-                st.info(f"📄 Raw API Response: {str(result)[:200]}...")
+                st.info(f"📄 Raw API Response: {str(result)[:300]}...")
                 
                 if result and result.get('success'):
                     st.success(f"✅ {len(normalized_data)}社のデータをGoogle Sheetsに追加しました！")
@@ -298,41 +368,65 @@ def upload_to_google_sheets(normalized_data):
                     # 詳細結果を表示
                     if 'results' in result:
                         results = result['results']
-                        st.info(f"📊 成功: {results.get('success', 0)}社 | エラー: {results.get('errors', 0)}社")
+                        success_count = results.get('success', 0)
+                        error_count = results.get('errors', 0)
+                        st.info(f"📊 成功: {success_count}社 | エラー: {error_count}社")
                         
                         # 詳細ログを表示
                         if results.get('details'):
                             with st.expander("📋 詳細結果を確認"):
-                                for detail in results['details']:
+                                for detail in results['details'][:10]:  # 最初の10件のみ表示
                                     if "✅" in detail:
                                         st.success(detail)
                                     else:
                                         st.error(detail)
+                                
+                                if len(results['details']) > 10:
+                                    st.info(f"... 他 {len(results['details']) - 10} 件")
                     
                     # キャッシュをクリア
                     st.cache_data.clear()
-                    st.info("🔄 データを更新しました。ページを再読み込みしてください。")
+                    st.info("🔄 データキャッシュをクリアしました。ページを再読み込みして最新データを確認してください。")
+                    
+                    # 再読み込みボタンを追加
+                    if st.button("🔄 ページを再読み込み", key="reload_page"):
+                        st.rerun()
                     
                 else:
                     error_msg = result.get('error', '不明なエラー') if result else 'レスポンスが空です'
                     st.error(f"❌ アップロードに失敗しました: {error_msg}")
                     
+                    # Google Apps Scriptのログ確認を促す
+                    st.info("💡 Google Apps Scriptの実行ログを確認してください")
+                    
             except json.JSONDecodeError as e:
                 st.error(f"❌ JSON解析エラー: {str(e)}")
-                st.error(f"Raw Response: {response.text[:500]}")
+                st.error(f"📄 Raw Response: {response.text[:500]}...")
+                st.info("💡 Google Apps Scriptが正しく設定されているか確認してください")
         else:
             st.error(f"❌ HTTP エラー: {response.status_code}")
-            st.error(f"Response: {response.text[:500]}")
+            st.error(f"📄 Response: {response.text[:500]}...")
+            
+            # 具体的なエラー対処法を表示
+            if response.status_code == 404:
+                st.error("💡 Google Apps ScriptのURLが正しくない可能性があります")
+            elif response.status_code == 403:
+                st.error("💡 Google Apps Scriptの権限設定を確認してください")
+            elif response.status_code == 500:
+                st.error("💡 Google Apps Script内でエラーが発生している可能性があります")
             
     except requests.exceptions.Timeout:
-        st.error("❌ タイムアウトエラー: 60秒以内に応答がありませんでした")
-        st.error("Google Apps Scriptの処理に時間がかかっています。しばらく待ってから再試行してください。")
+        st.error("❌ タイムアウトエラー: 2分以内に応答がありませんでした")
+        st.error("💡 大量データ処理のため時間がかかっています。データを分割して送信することを検討してください。")
+    except requests.exceptions.ConnectionError:
+        st.error("❌ 接続エラー: Google Apps Scriptに接続できません")
+        st.error("💡 インターネット接続を確認してください")
     except requests.exceptions.RequestException as e:
         st.error(f"❌ リクエストエラー: {str(e)}")
-        st.error("ネットワーク接続またはGoogle Apps Scriptの設定を確認してください")
+        st.error("💡 ネットワーク接続またはGoogle Apps Scriptの設定を確認してください")
     except Exception as e:
         st.error(f"❌ 予期しないエラー: {str(e)}")
-        st.error("Google Apps Scriptが最新版に更新されているか確認してください")
+        st.error("💡 Google Apps Scriptが最新版に更新されているか確認してください")
 
 # ========================================
 # データソース決定
