@@ -6,9 +6,10 @@
 # 一時的回避策: モジュールパスを追加
 import sys
 import os
-sys.path.append('/mount/src/fusioncrm/modules')
-sys.path.append('./modules')  # ← これを追加
-sys.path.append('modules')    # ← これを追加
+sys.path.insert(0, '/mount/src/fusioncrm/modules')
+sys.path.insert(0, './modules')
+sys.path.insert(0, 'modules')
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modules')) 
 
 
 # モジュールインポート（modules. プレフィックスなし）
