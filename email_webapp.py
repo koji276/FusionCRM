@@ -7,6 +7,9 @@
 import sys
 import os
 sys.path.append('/mount/src/fusioncrm/modules')
+sys.path.append('./modules')  # ← これを追加
+sys.path.append('modules')    # ← これを追加
+
 
 # モジュールインポート（modules. プレフィックスなし）
 from email_customizers import EnglishEmailCustomizer, JapaneseEmailCustomizer, get_openai_client
