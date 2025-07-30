@@ -65,9 +65,10 @@ def send_pregenerated_emails_with_resume(company_list, gmail_config, max_emails=
             server.login(gmail_config['email'], gmail_config['password'])
             
             msg = MIMEMultipart()
-            msg['From'] = gmail_config['email']
+            msg['From'] = f"Koji Tokuda (PicoCELA) <{gmail_config['email']}>"
             msg['To'] = company_email
             msg['Subject'] = email_subject
+            msg['Reply-To'] = 'tokuda@picocela.com'  # ← この行を追加
             
             msg.attach(MIMEText(email_body, 'plain'))
             
