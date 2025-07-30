@@ -70,7 +70,7 @@ def get_google_sheets_data():
         st.info("🔄 Google Sheetsから企業データを取得中...")
         
         # Google Apps Script URL
-        api_url = "https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec"
+        api_url = "https://script.google.com/macros/s/AKfycbxKCZRpxVFFo4QeCstGnz-wSig5alqUm8N8UPcsc_gXrJW8PHo0PMyOWzXN2Rv75rfC/exec"
         
         # 接続設定を改善
         headers = {
