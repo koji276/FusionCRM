@@ -1,6 +1,7 @@
 # pages/01_crm.py - エラー完全修正版
 # Updated: 2025-07-29 - Fixed REQUESTS_AVAILABLE error completely
 # Complete CRM System with Excel upload and Google Sheets batch upload
+# Updated: Google Apps Script URL to Version 12
 
 import streamlit as st
 import pandas as pd
@@ -69,7 +70,7 @@ def get_google_sheets_data():
     try:
         st.info("🔄 Google Sheetsから企業データを取得中...")
         
-        # Google Apps Script URL
+        # Google Apps Script URL (Version 12)
         api_url = "https://script.google.com/macros/s/AKfycbxKCZRpxVFFo4QeCstGnz-wSig5alqUm8N8UPcsc_gXrJW8PHo0PMyOWzXN2Rv75rfC/exec"
         
         # 接続設定を改善
@@ -308,8 +309,8 @@ def upload_to_google_sheets(normalized_data):
     try:
         st.info("🔄 Google Sheetsにアップロード中...")
         
-        # Google Apps Script URL
-        api_url = "https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec"
+        # Google Apps Script URL (Version 12)
+        api_url = "https://script.google.com/macros/s/AKfycbxKCZRpxVFFo4QeCstGnz-wSig5alqUm8N8UPcsc_gXrJW8PHo0PMyOWzXN2Rv75rfC/exec"
         
         # アップロード用のデータを準備
         upload_data = {
@@ -934,7 +935,7 @@ with tab6:
     st.info(f"📊 ライブラリ状況: {requests_status} | {excel_status}")
     st.info(f"📈 データ企業数: {len(companies_data)}社")
     if google_sheets_success:
-        st.info(f"🔗 API URL: https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec")
+        st.info(f"🔗 API URL: https://script.google.com/macros/s/AKfycbxKCZRpxVFFo4QeCstGnz-wSig5alqUm8N8UPcsc_gXrJW8PHo0PMyOWzXN2Rv75rfC/exec")
         st.info(f"📄 レスポンス形式: companies配列")
     else:
         st.info("📋 オフラインモード: サンプルデータ使用中")
