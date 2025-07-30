@@ -3,6 +3,16 @@
 モジュール分離後のクリーンなメインファイル
 """
 
+# 一時的回避策: モジュールパスを追加
+import sys
+import os
+sys.path.append('/mount/src/fusioncrm/modules')
+
+# モジュールインポート（modules. プレフィックスなし）
+from email_customizers import EnglishEmailCustomizer, JapaneseEmailCustomizer, get_openai_client
+from email_database import IntegratedEmailDatabase
+from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
+
 import pandas as pd
 import streamlit as st
 from datetime import datetime
