@@ -11,13 +11,132 @@ sys.path.insert(0, './modules')
 sys.path.insert(0, 'modules')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modules')) 
 
-
 # モジュールインポート（modules. プレフィックスなし）
 from email_customizers import EnglishEmailCustomizer, JapaneseEmailCustomizer, get_openai_client
 from email_database import IntegratedEmailDatabase
 from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
-from batch_processing import generate_english_emails_batch, generate_japanese_emails_individual  # ← この行を追加
-from email_sender import send_pregenerated_emails_with_resume
+from batch_processing import generate_english_emails_batch, generate_japanese_emails_individual
+
+# 実際のSMTP送信関数（偽装関数を置き換え）
+def send_pregenerated_emails_with_resume(company_list, gmail_config, max_emails=50, language='english', template_type='standard', send_interval=60, resume_mode=False):
+    """実際のSMTP送信関数"""
+    import time
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    st.write(f"📤 {len(company_list[:max_emails])}社への送信開始")
+    
+    sent_count = 0
+    failed_count = 0
+    
+    # データベース初期化
+    db = IntegratedEmailDatabase()
+    
+    for i, company in enumerate(company_list[:max_emails]):
+        company_name = company.get('company_name', 'Unknown')
+        company_email = company.get('email', '')
+        
+        st.write(f"送信中: {company_name} ({i+1}/{min(max_emails, len(company_list))})")
+        
+        if i > 0:
+            time.sleep(send_interval)
+        
+        if not company_email:
+            st.error(f"❌ {company_name} - メールアドレスが見つかりません")
+            failed_count += 1
+            continue
+        
+        try:
+            # 生成済みメールを取得
+            stored_email = db.get_generated_email(company_name, language, template_type)
+            
+            if stored_email:
+                email_subject = stored_email.get('subject', f"Partnership Opportunity - {company_name}")
+                email_body = stored_email.get('email_body', f"Dear {company_name} Team,\n\nI hope this message finds you well.\n\nMy name is Koji Tokuda from PicoCELA Inc. (NASDAQ: PCLA), a leading provider of advanced industrial multi-hop mesh Wi-Fi access point solutions.\n\nBest regards,\nKoji Tokuda\nPicoCELA Inc.")
+            else:
+                # フォールバック: 基本メール
+                email_subject = f"Partnership Opportunity - {company_name}"
+                email_body = f"Dear {company_name} Team,\n\nI hope this message finds you well.\n\nMy name is Koji Tokuda from PicoCELA Inc. (NASDAQ: PCLA), a leading provider of advanced industrial multi-hop mesh Wi-Fi access point solutions.\n\nWe specialize in creating robust, scalable wireless networks that can extend up to 10 hops with ultra-low latency (2-3ms per hop), reducing traditional cabling infrastructure by up to 90%.\n\nI believe there could be significant synergies between our technologies and your operations. Would you be open to a brief conversation to explore potential partnership opportunities?\n\nI'd be happy to share more details about how our solutions have helped companies in similar industries optimize their connectivity infrastructure.\n\nBest regards,\nKoji Tokuda\nCEO\nPicoCELA Inc.\ntokuda@picocela.com"
+            
+            # SMTP送信処理
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(gmail_config['email'], gmail_config['password'])
+            
+            msg = MIMEMultipart()
+            msg['From'] = gmail_config['email']
+            msg['To'] = company_email
+            msg['Subject'] = email_subject
+            
+            msg.attach(MIMEText(email_body, 'plain'))
+            
+            server.send_message(msg)
+            server.quit()
+            
+            # 送信履歴をデータベースに保存
+            db.save_send_record({
+                'company_name': company_name,
+                'recipient_email': company_email,
+                'subject': email_subject,
+                'email_body': email_body,
+                'language': language,
+                'template_type': template_type,
+                'status': 'success',
+                'sent_at': datetime.now().isoformat()
+            })
+            
+            sent_count += 1
+            st.success(f"✅ {company_name} - 送信成功")
+            
+        except smtplib.SMTPAuthenticationError as e:
+            st.error(f"❌ Gmail認証エラー: {str(e)}")
+            st.error("アプリパスワードを確認してください")
+            failed_count += 1
+            break  # 認証エラーの場合は処理を停止
+            
+        except smtplib.SMTPRecipientsRefused as e:
+            st.error(f"❌ {company_name} - 無効なメールアドレス: {company_email}")
+            failed_count += 1
+            
+        except smtplib.SMTPServerDisconnected as e:
+            st.error(f"❌ SMTP接続エラー: {str(e)}")
+            failed_count += 1
+            
+        except Exception as e:
+            st.error(f"❌ {company_name} - 送信失敗: {str(e)}")
+            
+            # 送信失敗もデータベースに記録
+            db.save_send_record({
+                'company_name': company_name,
+                'recipient_email': company_email,
+                'subject': email_subject if 'email_subject' in locals() else 'N/A',
+                'email_body': email_body if 'email_body' in locals() else 'N/A',
+                'language': language,
+                'template_type': template_type,
+                'status': 'failed',
+                'error_message': str(e),
+                'sent_at': datetime.now().isoformat()
+            })
+            
+            failed_count += 1
+    
+    # 送信完了サマリー
+    total_attempted = min(max_emails, len(company_list))
+    success_rate = (sent_count / total_attempted * 100) if total_attempted > 0 else 0
+    
+    st.write("---")
+    st.write("📊 **送信完了サマリー**")
+    st.write(f"✅ 成功: {sent_count}社")
+    st.write(f"❌ 失敗: {failed_count}社")
+    st.write(f"📈 成功率: {success_rate:.1f}%")
+    
+    return {
+        'successful_sends': sent_count,
+        'failed_sends': failed_count,
+        'total_attempted': total_attempted,
+        'success_rate': success_rate
+    }
 
 import pandas as pd
 import streamlit as st
@@ -30,18 +149,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# 一時的回避策: モジュールパスを追加
-import sys
-import os
-sys.path.append('/mount/src/fusioncrm/modules')
-
-# モジュールインポート（modules. プレフィックスなし）
-from email_customizers import EnglishEmailCustomizer, JapaneseEmailCustomizer, get_openai_client
-from email_database import IntegratedEmailDatabase
-from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
-from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
-
 
 def render_system_statistics():
     """システム統計表示"""
@@ -128,7 +235,6 @@ def render_system_statistics():
     finally:
         conn.close()
 
-
 def render_settings_management():
     """設定管理機能"""
     st.subheader("⚙️ システム設定")
@@ -174,7 +280,6 @@ def render_settings_management():
         except:
             st.write("**データベースサイズ**: 取得できませんでした")
 
-
 def render_send_history():
     """送信履歴表示"""
     st.subheader("📧 送信履歴")
@@ -216,7 +321,6 @@ def render_send_history():
             st.info("フィルター条件に一致する履歴がありません")
     else:
         st.warning("⚠️ 送信履歴がありません")
-
 
 def render_email_results_tab():
     """生成済みメール確認・編集タブ"""
@@ -319,7 +423,6 @@ def render_email_results_tab():
         st.error(f"❌ データベースエラー: {str(e)}")
     finally:
         conn.close()
-
 
 def render_send_tab():
     """メール送信タブ"""
@@ -430,44 +533,18 @@ def render_send_tab():
             
             if remaining_daily <= 0:
                 st.error("🚫 本日の送信制限に達しています。明日再開してください。")
-            elif available_count > 0:
+            else:
                 companies_data = get_companies_from_sheets()
                 
-                if st.session_state['send_mode'] == 'resume':
-                    # 再開モード
-                    already_sent = db.get_already_sent_companies(send_language, send_template)
-                    remaining_companies = [c for c in companies_data if c.get('company_name') not in already_sent]
-                    
-                    st.info(f"📧 送信済み: {len(already_sent)}社 | 未送信: {len(remaining_companies)}社")
-                    
-                    if not remaining_companies:
-                        st.success("✅ 全企業への送信が完了しています！")
-                    else:
-                        target_count = min(max_sends, len(remaining_companies), remaining_daily)
-                        estimated_time = target_count * (send_interval + 10) / 60
-                        
-                        st.write(f"⏱️ 予想送信時間: {estimated_time:.1f}分 ({target_count}社)")
-                        
-                        # 送信確認
-                        confirm_send = st.checkbox("📤 送信内容を確認し、Gmail制限を理解しました")
-                        
-                        if confirm_send and st.button("🔄 送信再開", type="primary"):
-                            summary = send_pregenerated_emails_with_resume(
-                                companies_data, 
-                                gmail_config, 
-                                max_sends, 
-                                send_language, 
-                                send_template, 
-                                send_interval,
-                                resume_mode=True
-                            )
-                            st.session_state['last_send_summary'] = summary
-                else:
-                    # 新規モード
+                if companies_data:
                     target_count = min(max_sends, len(companies_data), remaining_daily)
                     estimated_time = target_count * (send_interval + 10) / 60
                     
                     st.write(f"⏱️ 予想送信時間: {estimated_time:.1f}分 ({target_count}社)")
+                    
+                    # 企業データ確認表示
+                    st.subheader("📋 送信対象企業確認")
+                    st.write(f"Google Sheetsから{len(companies_data)}社のデータを取得")
                     
                     # 送信確認
                     confirm_send = st.checkbox("📤 送信内容を確認し、Gmail制限を理解しました")
@@ -483,8 +560,8 @@ def render_send_tab():
                             resume_mode=False
                         )
                         st.session_state['last_send_summary'] = summary
-            else:
-                st.warning(f"⚠️ {send_language}/{send_template}メールが生成されていません。まず生成してください。")
+                else:
+                    st.error("❌ Google Sheetsから企業データを取得できませんでした")
                 
         except Exception as e:
             st.error(f"❌ 送信可能数確認エラー: {str(e)}")
@@ -493,11 +570,8 @@ def render_send_tab():
     else:
         st.warning("⚠️ Gmail設定を完了してください")
 
-
 def main():
     """メインアプリケーション"""
-    
-
     
     # タイトル
     st.title("🌐 PicoCELA統合メールシステム完全版")
@@ -700,7 +774,6 @@ def main():
                     st.error(f"エクスポートエラー: {str(e)}")
                 finally:
                     conn.close()
-
 
 if __name__ == "__main__":
     main()
