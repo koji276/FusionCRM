@@ -12,6 +12,7 @@ sys.path.append('/mount/src/fusioncrm/modules')
 from email_customizers import EnglishEmailCustomizer, JapaneseEmailCustomizer, get_openai_client
 from email_database import IntegratedEmailDatabase
 from data_manager import get_companies_from_sheets, render_company_data_management, render_csv_import
+from batch_processing import generate_english_emails_batch, generate_japanese_emails_individual  # ← この行を追加
 
 import pandas as pd
 import streamlit as st
