@@ -60,7 +60,7 @@ def send_pregenerated_emails_with_resume(company_list, gmail_config, max_emails=
                 email_body = f"Dear {company_name} Team,\n\nI hope this message finds you well.\n\nMy name is Koji Tokuda from PicoCELA Inc. (NASDAQ: PCLA), a leading provider of advanced industrial multi-hop mesh Wi-Fi access point solutions.\n\nWe specialize in creating robust, scalable wireless networks that can extend up to 10 hops with ultra-low latency (2-3ms per hop), reducing traditional cabling infrastructure by up to 90%.\n\nI believe there could be significant synergies between our technologies and your operations. Would you be open to a brief conversation to explore potential partnership opportunities?\n\nI'd be happy to share more details about how our solutions have helped companies in similar industries optimize their connectivity infrastructure.\n\nBest regards,\nKoji Tokuda\nCEO\nPicoCELA Inc.\ntokuda@picocela.com"
             
             # SMTP送信処理
-            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server = smtplib.SMTP('smtp-mail.outlook.com', 587)
             server.starttls()
             server.login(gmail_config['email'], gmail_config['password'])
             
