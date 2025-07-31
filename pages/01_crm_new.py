@@ -81,12 +81,12 @@ def get_google_sheets_data():
             'Cache-Control': 'no-cache'
         }
         
-        # APIリクエスト実行（修正版）
-        response = requests.get(
+        # POSTリクエストに変更
+        response = requests.post(
             api_url,
-            params={"action": "get_companies"},
+            json={"action": "get_companies"},  # JSON body
             headers=headers,
-            timeout=30,  # タイムアウトを30秒に延長
+            timeout=30,
             verify=True
         )
         
