@@ -84,7 +84,7 @@ def get_google_sheets_data():
         # POSTリクエストに変更
         response = requests.post(
             api_url,
-            json={"action": "get_companies"},  # JSON body
+            json={"action": "get_companies"},
             headers=headers,
             timeout=30,
             verify=True
