@@ -90,7 +90,7 @@ def get_google_sheets_data():
         # 一時的なテスト用（企業データではなく、接続テスト）
         response = requests.get(
             api_url,
-            params={"action": "test"},  # "get_companies" → "test" に変更
+            params={"action": "get_companies"},
             headers=headers,
             timeout=30,
             verify=True
@@ -348,7 +348,7 @@ def upload_to_google_sheets(normalized_data):
         # 一時的なテスト用（企業データではなく、接続テスト）
         response = requests.get(
             api_url,
-            params={"action": "test"},  # "get_companies" → "test" に変更
+            params={"action": "get_companies"},
             headers=headers,
             timeout=30,
             verify=True
