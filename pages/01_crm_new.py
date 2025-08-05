@@ -81,16 +81,16 @@ def get_google_sheets_data():
             'Accept-Language': 'en-US,en;q=0.9',
             'Cache-Control': 'no-cache'
         }
-
-        # POSTリクエストに変更
-        response = requests.post(
+        
+        # 一時的にGETリクエストに戻す
+        response = requests.get(
             api_url,
-            json={"action": "get_companies"},
+            params={"action": "get_companies"},  # GETパラメータとして送信
             headers=headers,
             timeout=30,
             verify=True
         )
-        
+                
         st.info(f"📡 API Response Status: {response.status_code}")
         
         if response.status_code == 200:
@@ -339,12 +339,13 @@ def upload_to_google_sheets(normalized_data):
         # データサイズを確認
         data_size = len(json.dumps(upload_data))
         st.info(f"📊 送信データサイズ: {data_size:,} bytes")
-        
-        response = requests.post(
+                
+        # 一時的にGETリクエストに戻す
+        response = requests.get(
             api_url,
-            json=upload_data,
+            params={"action": "get_companies"},  # GETパラメータとして送信
             headers=headers,
-            timeout=120,  # 2分のタイムアウト（大量データ対応）
+            timeout=30,
             verify=True
         )
         
