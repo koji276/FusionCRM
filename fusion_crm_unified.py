@@ -242,7 +242,7 @@ def get_google_sheets_data():
         # APIリクエスト実行
         response = requests.get(
             api_url,
-            params={"action": "get_companies"},
+            params={"action": "test"},
             headers=headers,
             timeout=30,
             verify=True
