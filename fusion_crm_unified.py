@@ -229,7 +229,7 @@ def get_google_sheets_data():
         st.info("🔄 Google Sheetsから企業データを取得中...")
         
         # Google Apps Script URL
-        api_url = "https://script.google.com/macros/s/AKfycbx3e5TpdzcsBueF68sOonUJwd9j2-zR5OEZoqGZ0-0E57vYutCq5ivl3QJIUfKQ6vCUkw/exec"
+        api_url = "https://script.google.com/macros/s/AKfycbwWEyIxrFM1tQsAf2Omzmj5H8RdXhhhQrpZR5kW3o9yfTOKZZwPq5O2gPqDZiLGOGA3ZA/exec"
         
         # 接続設定
         headers = {
@@ -295,7 +295,7 @@ def upload_to_google_sheets(normalized_data):
         st.info("🔄 Google Sheetsにアップロード中...")
         
         # Google Apps Script URL
-        api_url = "https://script.google.com/macros/s/AKfycbx3e5TpdzcsBueF68sOonUJwd9j2-zR5OEZoqGZ0-0E57vYutCq5ivl3QJIUfKQ6vCUkw/exec"
+        api_url = "https://script.google.com/macros/s/AKfycbwWEyIxrFM1tQsAf2Omzmj5H8RdXhhhQrpZR5kW3o9yfTOKZZwPq5O2gPqDZiLGOGA3ZA/exec"
         
         # アップロード用のデータを準備
         upload_data = {
