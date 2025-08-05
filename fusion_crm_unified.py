@@ -295,7 +295,7 @@ def upload_to_google_sheets(normalized_data):
         st.info("🔄 Google Sheetsにアップロード中...")
         
         # Google Apps Script URL
-        api_url = "https://script.google.com/macros/s/AKfycbykUlinwW4oVA08Uo1pqbhHsBWtVM1SMFoo34OMT9kRJ0tRVccsaydlmV5lxjzTrGCu/exec"
+        api_url = "https://script.google.com/macros/s/AKfycbx3e5TpdzcsBueF68sOonUJwd9j2-zR5OEZoqGZ0-0E57vYutCq5ivl3QJIUfKQ6vCUkw/exec"
         
         # アップロード用のデータを準備
         upload_data = {
