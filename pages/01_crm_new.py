@@ -71,8 +71,12 @@ def get_google_sheets_data():
         st.info("🔄 Google Sheetsから企業データを取得中...")
         
         # Google Apps Script URL (Version 12)
-        api_url = "https://script.google.com/macros/s/AKfycbyxt-8ArghOzRYKWn3QlV0wk_skkogyRRDmsGGWm5ePBYRUt5RW4AfzUhCZNGrbwW-0nw/exec"
+
+#        api_url = "https://script.google.com/macros/s/AKfycbyxt-8ArghOzRYKWn3QlV0wk_skkogyRRDmsGGWm5ePBYRUt5RW4AfzUhCZNGrbwW-0nw/exec"
                 
+      　# 新しいURL（変更後）
+        ap i_url = "https://script.google.com/macros/s/AKfycbx3e5TpdzcsBueF68sOonUJwd9j2-zR5OEZoqGZ0-0E57vYutCq5ivl3QJIUfKQ6vCUkw/exec"
+
         # 修正後（Content-Typeを追加）
         headers = {
             'Content-Type': 'application/json',  # ← これを追加
@@ -82,15 +86,16 @@ def get_google_sheets_data():
             'Cache-Control': 'no-cache'
         }
         
-        # 一時的にGETリクエストに戻す
+        
+        # 一時的なテスト用（企業データではなく、接続テスト）
         response = requests.get(
             api_url,
-            params={"action": "get_companies"},  # GETパラメータとして送信
+            params={"action": "test"},  # "get_companies" → "test" に変更
             headers=headers,
             timeout=30,
             verify=True
         )
-                
+
         st.info(f"📡 API Response Status: {response.status_code}")
         
         if response.status_code == 200:
@@ -340,10 +345,10 @@ def upload_to_google_sheets(normalized_data):
         data_size = len(json.dumps(upload_data))
         st.info(f"📊 送信データサイズ: {data_size:,} bytes")
                 
-        # 一時的にGETリクエストに戻す
+        # 一時的なテスト用（企業データではなく、接続テスト）
         response = requests.get(
             api_url,
-            params={"action": "get_companies"},  # GETパラメータとして送信
+            params={"action": "test"},  # "get_companies" → "test" に変更
             headers=headers,
             timeout=30,
             verify=True
