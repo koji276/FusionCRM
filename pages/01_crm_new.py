@@ -72,15 +72,16 @@ def get_google_sheets_data():
         
         # Google Apps Script URL (Version 12)
         api_url = "https://script.google.com/macros/s/AKfycbyxt-8ArghOzRYKWn3QlV0wk_skkogyRRDmsGGWm5ePBYRUt5RW4AfzUhCZNGrbwW-0nw/exec"
-        
-        # 接続設定を改善
+                
+        # 修正後（Content-Typeを追加）
         headers = {
+            'Content-Type': 'application/json',  # ← これを追加
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
             'Accept-Language': 'en-US,en;q=0.9',
             'Cache-Control': 'no-cache'
         }
-        
+
         # POSTリクエストに変更
         response = requests.post(
             api_url,
@@ -324,12 +325,14 @@ def upload_to_google_sheets(normalized_data):
         }
         
         st.info(f"📤 {len(normalized_data)}社のデータを送信中...")
+
         
-        # 改善されたAPIリクエスト設定
+        # 修正後（Content-Typeを追加）
         headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            'Content-Type': 'application/json',  # ← これを追加
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Cache-Control': 'no-cache'
         }
         
