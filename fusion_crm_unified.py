@@ -242,7 +242,7 @@ def get_google_sheets_data():
         # APIリクエスト実行
         response = requests.get(
             api_url,
-            params={"action": "get_companies"}  # "test" → "get_companies",
+            params={"action": "get_companies"},  # ← コンマを追加
             headers=headers,
             timeout=30,
             verify=True
