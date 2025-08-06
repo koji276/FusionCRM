@@ -70,13 +70,14 @@ def get_google_sheets_data():
     try:
         st.info("🔄 Google Sheetsから企業データを取得中...")
         
-        # Google Apps Script URL (Version 12)
-      　# 新しいURL（変更後）
+        # Google Apps Script URL (新しいGAS v16)
+        # 新しいURL（変更後）
         api_url = "https://script.google.com/macros/s/AKfycbwWEyIxrFM1tQsAf2Omzmj5H8RdXhhhQrpZR5kW3o9yfTOKZZwPq5O2gPqDZiLGOGA3ZA/exec"
 
+        
         # 修正後（Content-Typeを追加）
         headers = {
-            'Content-Type': 'application/json',  # ← これを追加
+            'Content-Type': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
             'Accept-Language': 'en-US,en;q=0.9',
@@ -341,15 +342,16 @@ def upload_to_google_sheets(normalized_data):
         # データサイズを確認
         data_size = len(json.dumps(upload_data))
         st.info(f"📊 送信データサイズ: {data_size:,} bytes")
-                
-        # 一時的なテスト用（企業データではなく、接続テスト）
-        response = requests.get(
+
+
+        response = requests.post(
             api_url,
-            params={"action": "get_companies"},
+            json=upload_data,
             headers=headers,
-            timeout=30,
+            timeout=120,
             verify=True
         )
+
         
         st.info(f"📡 API Response Status: {response.status_code}")
         
@@ -946,7 +948,7 @@ with tab6:
     st.info(f"📊 ライブラリ状況: {requests_status} | {excel_status}")
     st.info(f"📈 データ企業数: {len(companies_data)}社")
     if google_sheets_success:
-        st.info(f"🔗 API URL: https://script.google.com/macros/s/AKfycbxKCZRpxVFFo4QeCstGnz-wSig5alqUm8N8UPcsc_gXrJW8PHo0PMyOWzXN2Rv75rfC/exec")
+        st.info(f"🔗 API URL: https://script.google.com/macros/s/AKfycbwWEyIxrFM1tQsAf2Omzmj5H8RdXhhhQrpZR5kW3o9yfTOKZZwPq5O2gPqDZiLGOGA3ZA/exec")
         st.info(f"📄 レスポンス形式: companies配列")
     else:
         st.info("📋 オフラインモード: サンプルデータ使用中")
