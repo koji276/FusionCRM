@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 import os
 import base64
-from email.mime.text import MimeText
+from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import requests
 
