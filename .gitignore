@@ -64,3 +64,6 @@ docs/_build/
 # .gitignoreファイルに追加
 client_secret.json
 *.json
+
+.streamlit/secrets.toml
+client_secret.json
