@@ -72,7 +72,7 @@ def get_google_sheets_data():
         
         # Google Apps Script URL (新しいGAS v16)
         # 新しいURL（変更後）
-        api_url = "https://script.google.com/macros/s/AKfycbwWEyIxrFM1tQsAf2Omzmj5H8RdXhhhQrpZR5kW3o9yfTOKZZwPq5O2gPqDZiLGOGA3ZA/exec"
+        api_url = "https://script.google.com/macros/s/AKfycby998uiOXSrg9GEDvocVfZR7a7uN_P121G__FRqyJh2zLMJA8KUB2dtsHi7GSZxoRAD-A/exec"
 
         
         # 修正後（Content-Typeを追加）
@@ -315,7 +315,7 @@ def upload_to_google_sheets(normalized_data):
         st.info("🔄 Google Sheetsにアップロード中...")
         
         # Google Apps Script URL (Version 15)
-        api_url = "https://script.google.com/macros/s/AKfycbwWEyIxrFM1tQsAf2Omzmj5H8RdXhhhQrpZR5kW3o9yfTOKZZwPq5O2gPqDZiLGOGA3ZA/exec"
+        api_url = "https://script.google.com/macros/s/AKfycby998uiOXSrg9GEDvocVfZR7a7uN_P121G__FRqyJh2zLMJA8KUB2dtsHi7GSZxoRAD-A/exec"
         
         # アップロード用のデータを準備
         upload_data = {
