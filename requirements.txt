@@ -7,3 +7,8 @@ secure-smtplib>=0.1.1
 openpyxl>=3.0.0
 openai>=1.3.0
 # Force redeploy - 2025-07-29 - Full CRM update
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+
