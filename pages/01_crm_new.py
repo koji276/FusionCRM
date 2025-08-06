@@ -97,10 +97,6 @@ def get_google_sheets_data():
         st.info(f"📡 API Response Status: {response.status_code}")
         
         if response.status_code == 200:
-
-            # JSON解析の直前に追加
-            st.error(f"📄 Raw Response (最初の500文字): {response.text[:500]}")
-            st.error(f"📄 Content-Type: {response.headers.get('content-type', 'unknown')}")
             
             try:
                 data = response.json()
