@@ -51,7 +51,7 @@ def get_crm_data():
 def send_single_email(from_email, from_password, to_email, subject, body, company_name):
     """単体メール送信関数（Outlook SMTP使用）"""
     try:
-        # Outlook SMTP設定（以前動いていた設定）
+        # Gmail SMTP設定（PicoCELAメール対応）
         msg = MIMEMultipart()
         msg['From'] = f"Koji Tokuda (PicoCELA) <{from_email}>"
         msg['To'] = to_email
@@ -60,7 +60,7 @@ def send_single_email(from_email, from_password, to_email, subject, body, compan
         
         msg.attach(MIMEText(body, 'plain'))
         
-        server = smtplib.SMTP('smtp-mail.outlook.com', 587)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(from_email, from_password)
         server.send_message(msg)
